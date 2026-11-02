@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.4.0";
+const VERSION = "1.4.1";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 
@@ -270,8 +270,22 @@ eventBus.on("scalechanging", ({ scale, presetValue }) => {
   if (preset) { zoomSelect.value = preset; custom.hidden = true; }
   else { custom.textContent = Math.round(scale * 100) + "%"; custom.hidden = false; zoomSelect.value = "custom"; }
   if (presetValue) store.set("zoom", presetValue);
+  fitZoomWidth();
 });
-zoomSelect.onchange = () => { if (zoomSelect.value !== "custom") viewer.currentScaleValue = zoomSelect.value; container.focus(); };
+// The zoom box grows/shrinks so the chosen option is always fully visible.
+const measureCtx = document.createElement("canvas").getContext("2d");
+function fitZoomWidth() {
+  const opt = zoomSelect.options[zoomSelect.selectedIndex];
+  if (!opt) return;
+  const cs = getComputedStyle(zoomSelect);
+  measureCtx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const text = measureCtx.measureText(opt.textContent.trim()).width;
+  const chrome = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth) + 26; // + dropdown arrow
+  zoomSelect.style.width = Math.ceil(text + chrome) + "px";
+}
+fitZoomWidth();
+document.fonts?.ready.then(fitZoomWidth);
+zoomSelect.onchange = () => { if (zoomSelect.value !== "custom") viewer.currentScaleValue = zoomSelect.value; fitZoomWidth(); container.focus(); };
 $("btnZoomIn").onclick = () => viewer.increaseScale();
 $("btnZoomOut").onclick = () => viewer.decreaseScale();
 container.addEventListener("wheel", (e) => {
