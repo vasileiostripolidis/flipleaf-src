@@ -32,6 +32,8 @@ struct Files {
     allowed: Mutex<HashSet<PathBuf>>,
     /// Most recent first.
     recent: Mutex<Vec<PathBuf>>,
+    /// Output folders the user picked (split, export images…).
+    folders: Mutex<HashSet<PathBuf>>,
 }
 
 fn is_pdf(p: &Path) -> bool {
@@ -224,6 +226,55 @@ async fn save_pdf_as(app: AppHandle, request: Request<'_>, files: State<'_, File
     Ok(Some(p.to_string_lossy().into_owned()))
 }
 
+/// "Save as" for non-PDF outputs (Word, text, images, zip). The user picks the location.
+#[tauri::command]
+async fn save_bytes_as(app: AppHandle, request: Request<'_>) -> Result<Option<String>, String> {
+    let bytes = body_bytes(&request)?;
+    let name = header(&request, "x-name").unwrap_or_else(|| "export".into());
+    let ext = Path::new(&name).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let mut dialog = app.dialog().file().set_file_name(&name);
+    if !ext.is_empty() {
+        dialog = dialog.add_filter(ext.to_uppercase(), &[ext.as_str()]);
+    }
+    let Some(mut path) = dialog.blocking_save_file().and_then(|f| f.into_path().ok()) else {
+        return Ok(None);
+    };
+    if !ext.is_empty() && path.extension().is_none() {
+        path.set_extension(&ext);
+    }
+    if ext == "pdf" {
+        write_atomic(&path, &bytes)?;
+    } else {
+        std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    }
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Native folder picker for tools that produce several files.
+#[tauri::command]
+async fn pick_folder(app: AppHandle, files: State<'_, Files>) -> Result<Option<String>, String> {
+    let Some(dir) = app.dialog().file().blocking_pick_folder().and_then(|f| f.into_path().ok()) else {
+        return Ok(None);
+    };
+    let dir = normalize(&dir);
+    files.folders.lock().unwrap().insert(dir.clone());
+    Ok(Some(dir.to_string_lossy().into_owned()))
+}
+
+/// Writes one file into a folder the user picked. File names cannot contain paths.
+#[tauri::command]
+fn write_in_folder(request: Request, files: State<Files>) -> Result<(), String> {
+    let dir = normalize(Path::new(&header(&request, "x-dir").ok_or("Missing folder")?));
+    if !files.folders.lock().unwrap().contains(&dir) {
+        return Err("This folder was not chosen in Flipleaf.".into());
+    }
+    let name = header(&request, "x-name").ok_or("Missing name")?;
+    if name.is_empty() || name.contains(['/', '\\', ':']) || name.starts_with('.') {
+        return Err("Invalid file name".into());
+    }
+    std::fs::write(dir.join(name), body_bytes(&request)?).map_err(|e| e.to_string())
+}
+
 /* ------------------------------------------------------------------ misc */
 
 #[tauri::command]
@@ -264,6 +315,9 @@ pub fn run() {
             read_pdf,
             save_pdf,
             save_pdf_as,
+            save_bytes_as,
+            pick_folder,
+            write_in_folder,
             recent_files,
             forget_recent,
             print_window,

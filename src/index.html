@@ -51,6 +51,7 @@
     <button class="btn icon tool" data-tool="hand" data-tip="toolHand"><i data-icon="hand"></i></button>
     <div class="sep"></div>
     <button class="btn accent" id="btnEditPdf" data-tip="editPdf"><i data-icon="file-pen-line"></i><span data-i18n="editShort"></span></button>
+    <button class="btn" id="btnAllTools" data-tip="allToolsTip"><i data-icon="layout-grid"></i><span data-i18n="allTools"></span></button>
     <div class="sep"></div>
     <button class="btn icon tool" data-tool="highlight" data-tip="toolHighlight"><i data-icon="highlighter"></i></button>
     <button class="btn icon tool" data-tool="ink" data-tip="toolDraw"><i data-icon="pen-line"></i></button>
@@ -91,6 +92,8 @@
   </div>
 </div>
 
+<!-- page picker options (redact, prepare form, shapes, notes) -->
+<div class="tooloptions pickbar" id="pickBar" hidden></div>
 <!-- edit-PDF options (shown while editing text & images) -->
 <div class="tooloptions editbar" id="editBar" hidden></div>
 
@@ -110,11 +113,13 @@
     <nav class="rail">
       <button class="btn icon on" data-panel="thumbs" data-tip="thumbnails"><i data-icon="layout-grid"></i></button>
       <button class="btn icon" data-panel="outline" data-tip="bookmarks"><i data-icon="bookmark"></i></button>
+      <button class="btn icon" data-panel="comments" data-tip="commentsPanel"><i data-icon="file-pen-line"></i></button>
     </nav>
     <div class="panel">
       <div class="panel-head" id="panelTitle"></div>
       <div class="panel-body" id="thumbs"></div>
       <div class="panel-body" id="outline" hidden></div>
+      <div class="panel-body" id="comments" hidden></div>
     </div>
   </aside>
 

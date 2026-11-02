@@ -5,13 +5,14 @@ import { hydrateIcons, icon } from "./icons.js";
 import { t, shortcut, translateDom, LANG } from "./i18n.js";
 import * as platform from "./platform.js";
 import { createEditor } from "./editor.js";
+import { installPro } from "./pro.js";
 
 globalThis.pdfjsLib = pdfjsLib; // the viewer components expect it here
 const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, SpreadMode, LinkTarget } =
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 
@@ -53,7 +54,7 @@ eventBus.on("annotationeditoruimanager", ({ uiManager: m }) => (uiManager = m));
 
 const doc = { pdf: null, task: null, name: "", path: null, size: 0, dirty: false, key: "", password: undefined };
 
-async function openData({ name, data, path }) {
+async function openData({ name, data, path }, { dirty = false } = {}) {
   if (!(await confirmDiscard())) return;
   const size = data.byteLength; // PDF.js takes ownership of `data`
   if (editor.active) await editor.exit(false);
@@ -102,6 +103,7 @@ async function openData({ name, data, path }) {
 
   buildThumbnails();
   buildOutline();
+  if (dirty) setDirty(true);
   pdf.getFieldObjects().then((f) => { if (f && Object.keys(f).length) toast(t("forms"), 5000); }).catch(() => {});
   container.focus();
 }
@@ -680,10 +682,10 @@ async function buildOutline() {
 
 function showPanel(name) {
   for (const b of document.querySelectorAll("[data-panel]")) b.classList.toggle("on", b.dataset.panel === name);
-  $("thumbs").hidden = name !== "thumbs";
-  $("outline").hidden = name !== "outline";
-  $("panelTitle").textContent = t(name === "thumbs" ? "thumbnails" : "bookmarks");
+  for (const id of ["thumbs", "outline", "comments"]) $(id).hidden = name !== id;
+  $("panelTitle").textContent = t({ thumbs: "thumbnails", outline: "bookmarks", comments: "commentsPanel" }[name]);
   store.set("panel", name);
+  if (name === "comments") setTimeout(() => pro.refreshComments(), 0);
 }
 for (const b of document.querySelectorAll("[data-panel]")) b.onclick = () => showPanel(b.dataset.panel);
 function toggleSidebar(force) {
@@ -889,9 +891,16 @@ const MENUS = {
   file: () => [
     { label: "openFile2", key: mod + "O", icon: "folder-open", run: openPicker },
     { label: "openRecent", icon: "clock", sub: recentMenu, when: () => platform.isDesktop },
+    { label: "createPdf", icon: "plus", sub: () => [
+      { label: "combine", icon: "copy", pro: true, run: () => pro.combine() },
+      { label: "imagesToPdf", icon: "image-plus", pro: true, run: () => pro.imagesToPdf() },
+    ] },
     "-",
     { label: "save", key: mod + "S", icon: "save", run: () => save(), when: hasDoc },
     { label: "saveAs", key: mod + shift + "S", icon: "download", run: () => save({ as: true }), when: hasDoc },
+    { label: "exportTo", icon: "file-text", when: hasDoc, sub: () => pro.menuItems("catConvert").filter((x) => /^export/.test(x.label)) },
+    { label: "compress", icon: "minus", pro: true, when: hasDoc, run: () => pro.compress() },
+    { label: "protect", icon: "scale", pro: true, when: hasDoc, run: () => pro.protect() },
     "-",
     { label: "print", key: mod + "P", icon: "printer", run: printDocument, when: hasDoc },
     "-",
@@ -934,7 +943,14 @@ const MENUS = {
     { label: "readAloud", key: mod + shift + "Y", icon: "volume-2", run: () => readAloud(), when: () => hasDoc() && !!speech },
   ],
   tools: () => [
+    { label: "allTools", icon: "layout-grid", run: () => pro.allTools() },
     { label: "editPdf", key: mod + "E", icon: "file-pen-line", run: () => toggleEditPdf(true), when: hasDoc },
+    "-",
+    { label: "catEdit", icon: "layout-grid", sub: () => pro.menuItems("catEdit") },
+    { label: "catConvert", icon: "file-text", sub: () => pro.menuItems("catConvert") },
+    { label: "catForms", icon: "text-cursor-input", sub: () => pro.menuItems("catForms") },
+    { label: "catSecurity", icon: "scale", sub: () => pro.menuItems("catSecurity") },
+    { label: "catComments", icon: "file-pen-line", sub: () => pro.menuItems("catComments") },
     "-",
     { label: "toolHighlight", icon: "highlighter", run: () => setTool("highlight"), when: hasDoc },
     { label: "toolDraw", icon: "pen-line", run: () => setTool("ink"), when: hasDoc },
@@ -971,7 +987,7 @@ async function fillMenu(el, items) {
     if (it.check !== undefined) b.setAttribute("aria-checked", !!it.check);
     const enabled = !it.disabled && (it.when ? it.when() : true);
     b.disabled = !enabled;
-    b.innerHTML = `${it.check ? icon("check", 16) : it.icon ? icon(it.icon, 16) : '<span class="ic-blank"></span>'}<span></span>${it.sub ? icon("chevron-right", 14) : `<kbd>${it.key || ""}</kbd>`}`;
+    b.innerHTML = `${it.check ? icon("check", 16) : it.icon ? icon(it.icon, 16) : '<span class="ic-blank"></span>'}<span></span>${it.pro ? `<em class="probadge">${t("pro")}</em>` : ""}${it.sub ? icon("chevron-right", 14) : `<kbd>${it.key || ""}</kbd>`}`;
     b.querySelector("span:not(.ic-blank)").textContent = it.text || t(it.label);
     if (it.title) b.title = it.title;
     if (it.sub) {
@@ -1066,12 +1082,21 @@ async function toggleEditPdf(on = !editor.active) {
   const overlay = busy(t("editLoading"));
   try {
     const bytes = await documentBytes();
-    await editor.enter(bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes));
+    await editor.enter(bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes), doc.password);
   } catch (e) {
     toast(t("failed", { err: e?.message || e }), 6000);
   } finally { overlay.remove(); }
 }
 $("btnEditPdf").onclick = () => toggleEditPdf();
+
+/* ================================================================== Pro tools */
+
+const pro = installPro({
+  t, toast, icon, dialog, busy, platform, viewer, eventBus, pdfjsLib, LANG, store, doc,
+  documentBytes, replaceDocumentData, openData, addImage, signDialog,
+  showCommentsPanel: () => { toggleSidebar(true); showPanel("comments"); },
+});
+$("btnAllTools").onclick = () => pro.allTools();
 
 /** Loads new bytes for the open document (after editing), keeping page, zoom and rotation. */
 async function replaceDocumentData(bytes) {
@@ -1089,6 +1114,7 @@ async function replaceDocumentData(bytes) {
   store.set("view." + doc.key, { page: keep.page, scale: keep.scale, rotation: keep.rotation });
   viewer.setDocument(pdf);
   linkService.setDocument(pdf, null);
+  $("pageCount").textContent = "/ " + pdf.numPages;
   old?.destroy().catch(() => {});
   buildThumbnails();
   buildOutline();
@@ -1293,4 +1319,4 @@ if (!platform.isDesktop && "serviceWorker" in navigator && location.protocol !==
 }
 
 // handy for debugging from the console
-window.flipleaf = { viewer, eventBus, doc, get uiManager() { return uiManager; } };
+window.flipleaf = { viewer, eventBus, doc, pro, get uiManager() { return uiManager; } };

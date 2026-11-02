@@ -66,6 +66,23 @@ export async function saveAs(bytes, suggestedName) {
   return "download";
 }
 
+/** "Save as" for any file type (Word, images, text, zip…). Resolves to a path / "download", or null if cancelled. */
+export async function saveBytesAs(bytes, name) {
+  if (isDesktop) return invoke("save_bytes_as", bytes, { headers: { "x-name": encodeURIComponent(name) } });
+  const types = { pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", txt: "text/plain", png: "image/png", jpg: "image/jpeg", zip: "application/zip" };
+  const url = URL.createObjectURL(new Blob([bytes], { type: types[name.split(".").pop().toLowerCase()] || "application/octet-stream" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  return "download";
+}
+
+/** Desktop: choose a folder for several output files. */
+export async function pickFolder() { return isDesktop ? invoke("pick_folder") : null; }
+export async function writeInFolder(dir, name, bytes) {
+  return invoke("write_in_folder", bytes, { headers: { "x-dir": encodeURIComponent(dir), "x-name": encodeURIComponent(name) } });
+}
+
 /* ---------------------------------------------------------------- recent files */
 
 export async function recentFiles() {

@@ -14,15 +14,9 @@ const RENDER_FLAGS = 0x01 /* annotations */ | 0x10 /* RGBA byte order */;
 const MAX_UNDO = 20;
 const BASE = new URL("./vendor/", import.meta.url).href;
 
+import { getPdfium } from "./pdfium.js";
 let P = null; // wrapped PDFium module
-async function pdfium() {
-  if (P) return P;
-  const { init } = await import("./vendor/pdfium/index.browser.js");
-  const wasmBinary = await (await fetch(BASE + "pdfium/pdfium.wasm")).arrayBuffer();
-  P = await init({ wasmBinary });
-  P.PDFiumExt_Init();
-  return P;
-}
+async function pdfium() { P = await getPdfium(); return P; }
 
 const FONT_FILES = {
   sans: { r: "FlipleafSans-Regular", b: "FlipleafSans-Bold", i: "FlipleafSans-Italic", bi: "FlipleafSans-BoldItalic" },
@@ -53,10 +47,11 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   function readFloats(n, fn) { const p = malloc(4 * n); try { if (!fn(p)) return null; return Array.from({ length: n }, (_, k) => M().getValue(p + 4 * k, "float")); } finally { free(p); } }
 
   /* ---------------------------------------------------------- document */
+  let password = "";
   async function open(bytes) {
     await pdfium();
     docPtr = putBytes(bytes);
-    doc = P.FPDF_LoadMemDocument(docPtr, bytes.length, "");
+    doc = P.FPDF_LoadMemDocument(docPtr, bytes.length, password);
     if (!doc) { free(docPtr); docPtr = 0; throw new Error("PDFium could not open this document (error " + P.FPDF_GetLastError() + ")"); }
     // form environment, so form fields are drawn in the live preview
     try {
@@ -614,7 +609,8 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   const onRendered = ({ pageNumber }) => decorate(pageNumber - 1);
 
   /* ---------------------------------------------------------- session */
-  async function enter(bytes) {
+  async function enter(bytes, pw = "") {
+    password = pw || "";
     await open(bytes);
     active = true; selected = null; mode = "select"; undo.length = 0; modified.clear();
     document.body.classList.add("editing");

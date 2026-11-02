@@ -49,6 +49,13 @@ Then right-click any PDF → **Open with → Flipleaf** (you can make it the def
 - Add new text and images, with live preview and undo
 - Keeps the document's own font when possible; Greek, Latin and Cyrillic always supported
 
+**Pro tools** (free during the launch period — *Tools → All tools*)
+- *Edit & organize:* organize pages (drag to reorder, rotate, delete, insert blank pages or pages from other PDFs), combine files, split, extract, crop, header/footer & page numbers, watermark, Bates numbering
+- *Convert:* create PDF from images, export to Word (.docx), images (PNG/JPEG) or text, reduce file size
+- *Forms & signatures:* prepare forms (text fields, checkboxes, signature fields, automatic field detection)
+- *Security:* password protection with AES-256 and permissions, remove security, true redaction (content is deleted, not just covered), remove hidden information
+- *Comments & review:* sticky notes, comments panel, stamps, shapes (rectangle, ellipse, line, arrow), compare two versions of a document
+
 **Comment & sign**
 - Highlight text (5 colors), freehand drawing (pen colors & thickness), text boxes, images
 - **Fill & Sign:** fill in PDF forms, draw or type your signature, keep up to 6 saved signatures
@@ -128,6 +135,9 @@ src/                     the app (shared by desktop and web)
   index.html, style.css  interface
   app.js                 viewer, menus, tools, signatures, find, print, presentation, read aloud
   editor.js              edit text & images (PDFium)
+  pro.js                 Pro tools (organize, convert, forms, security, comments)
+  licensing.js           plans & feature gating (Pro is free during launch)
+  pdfium.js, zip.js      PDFium helpers; ZIP and .docx writer
   legal/                 EULA and third-party notices shown in the app
   platform.js            desktop / web differences (files, dialogs, window)
   i18n.js                English & Greek text

@@ -126,6 +126,9 @@ const el = {
   kProps: "Ιδιότητες εγγράφου", kRead: "Ανάγνωση φωναχτά", kHelp: "Αυτή η λίστα", kEdit: "Επεξεργασία κειμένου & εικόνων", kClose: "Κλείσιμο εγγράφου",
 };
 
+/** Lets feature modules register their own strings. */
+export function addStrings(enStrings, elStrings) { Object.assign(en, enStrings); Object.assign(el, elStrings); }
+
 export const LANG = (navigator.languages || [navigator.language]).some((l) => /^el\b/i.test(l)) ? "el" : "en";
 const dict = LANG === "el" ? el : en;
 
