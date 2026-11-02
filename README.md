@@ -4,18 +4,17 @@
 </picture>
 
 <p align="center">
-  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img alt="Download for Windows" src="https://img.shields.io/badge/Windows-download-22c55e?style=for-the-badge&logo=windows&logoColor=white&labelColor=0b0f0d"></a>
-  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img alt="Download for macOS" src="https://img.shields.io/badge/macOS-download-22c55e?style=for-the-badge&logo=apple&logoColor=white&labelColor=0b0f0d"></a>
-  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img alt="Download for Linux" src="https://img.shields.io/badge/Linux-download-22c55e?style=for-the-badge&logo=linux&logoColor=white&labelColor=0b0f0d"></a>
-  <a href="https://vasileiostripolidis.github.io/flipleaf/"><img alt="Open the web app" src="https://img.shields.io/badge/Web-open%20app-0b0f0d?style=for-the-badge&logo=googlechrome&logoColor=white&labelColor=0b0f0d"></a>
+  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="docs/btn-windows.png" height="52" alt="Download for Windows"></a>&nbsp;
+  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="docs/btn-macos.png" height="52" alt="Download for macOS"></a>&nbsp;
+  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="docs/btn-linux.png" height="52" alt="Download for Linux"></a>&nbsp;
+  <a href="https://vasileiostripolidis.github.io/flipleaf/"><img src="docs/btn-web.png" height="52" alt="Open in browser"></a>
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/github/v/release/vasileiostripolidis/flipleaf?style=flat-square&label=version&labelColor=18181b&color=22c55e">
-  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-18181b?style=flat-square&logo=tauri&logoColor=24C8DB">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-18181b?style=flat-square&logo=rust&logoColor=white">
-  <img alt="WebAssembly" src="https://img.shields.io/badge/WebAssembly-18181b?style=flat-square&logo=webassembly&logoColor=white">
-  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-18181b?style=flat-square&labelColor=18181b&color=3f3f46">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/stack-dark.png">
+    <img src="docs/stack-light.png" height="34" alt="Tauri 2 · Rust · PDF.js · PDFium WASM · Vanilla JS · MIT">
+  </picture>
 </p>
 
 <br>
@@ -101,38 +100,10 @@ AES-256 encryption with permissions, true redaction that removes the content its
 
 ## Architecture
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, Segoe UI, system-ui, sans-serif","fontSize":"14px","primaryColor":"#0f1a14","primaryTextColor":"#e7ece9","primaryBorderColor":"#22c55e","lineColor":"#4ade80","secondaryColor":"#111827","tertiaryColor":"#0b0f0d","clusterBkg":"#0b0f0d","clusterBorder":"#27272a","edgeLabelBackground":"#0b0f0d"}}}%%
-flowchart LR
-  subgraph OS["Operating system"]
-    FS[(File system)]
-    WV["System WebView<br/>WebView2 · WebKit · WebKitGTK"]
-  end
-
-  subgraph Rust["Native shell · Tauri 2 / Rust"]
-    CMD["IPC commands<br/>open · read · save · recent · print"]
-    SCOPE["Path allow-list<br/>opened · picked · recent"]
-    CMD --> SCOPE --> FS
-  end
-
-  subgraph UI["Web core · ES modules"]
-    APP["app.js<br/>viewer · menus · tools"]
-    PDFJS["PDF.js 6.5<br/>render worker · text layer"]
-    PDFIUM["PDFium · WASM<br/>edit · pages · forms · crypto"]
-    SIG["signature.js"]
-    PRO["pro.js · 25 tools"]
-    EDIT["editor.js"]
-    PLAT["platform.js<br/>desktop ⇄ web"]
-    APP --> PDFJS
-    APP --> SIG
-    APP --> PRO --> PDFIUM
-    APP --> EDIT --> PDFIUM
-    APP --> PLAT
-  end
-
-  PLAT -- "raw-body IPC" --> CMD
-  UI -. runs in .-> WV
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
+  <img src="docs/architecture-light.png" width="100%" alt="Architecture: web core (app.js, PDF.js, PDFium WASM, tools) talks over IPC to the Rust shell, which only touches allow-listed files">
+</picture>
 
 <details open>
 <summary><b>Data flow</b></summary>
