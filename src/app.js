@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.5.1";
+const VERSION = "1.6.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -864,6 +864,28 @@ function setNight(on) {
 }
 setNight(store.get("night", false));
 
+/* ================================================================== theme */
+
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+const currentTheme = () => document.documentElement.dataset.theme || "system";
+const isDark = () => (currentTheme() === "system" ? darkQuery.matches : currentTheme() === "dark");
+
+function setTheme(theme) {
+  if (theme === "system") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  store.set("theme", theme);
+  updateThemeButton();
+}
+function updateThemeButton() {
+  const b = $("btnTheme"), dark = isDark();
+  b.innerHTML = icon(dark ? "sun" : "moon");
+  b.dataset.tip = dark ? "themeToLight" : "themeToDark";
+  b.setAttribute("aria-label", t(b.dataset.tip));
+}
+darkQuery.addEventListener("change", updateThemeButton);
+$("btnTheme").onclick = () => setTheme(isDark() ? "light" : "dark");
+setTheme(store.get("theme", "system"));
+
 /* ================================================================== menu bar */
 
 const hasDoc = () => !!doc.pdf;
@@ -919,6 +941,7 @@ const MENUS = {
     { label: "showSidebar", key: "F4", icon: "panel-left", check: !$("sidebar").hidden, run: () => toggleSidebar(), when: hasDoc },
     "-",
     { label: "presentation", key: mod + "L", icon: "presentation", run: () => present(true), when: hasDoc },
+    { label: "theme", icon: "moon", sub: () => ["system", "light", "dark"].map((v) => ({ label: "theme" + v[0].toUpperCase() + v.slice(1), check: currentTheme() === v, run: () => setTheme(v) })) },
     { label: "nightMode", key: "N", icon: "moon", check: document.body.classList.contains("night"), run: () => setNight(!document.body.classList.contains("night")) },
     { label: "readAloud", key: mod + shift + "Y", icon: "volume-2", run: () => readAloud(), when: () => hasDoc() && !!speech },
   ],

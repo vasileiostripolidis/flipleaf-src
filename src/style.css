@@ -18,8 +18,16 @@
   color-scheme: light;
   font: 13.5px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Roboto, sans-serif;
 }
+/* Dark theme: chosen in View → Theme, or following the system when no choice is stored */
+:root[data-theme="dark"] {
+    --brand: #4cc27a; --brand-ink: #08130c;
+    --bg: #101311; --surface: #1b1f1d; --surface-2: #222724; --ink: #e6ebe8; --muted: #93a099;
+    --line: #2d3430; --hover: rgb(255 255 255 / .06); --active: rgb(255 255 255 / .1);
+    --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 10px 30px rgb(0 0 0 / .45);
+    --appbar: #0b100d; color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --brand: #4cc27a; --brand-ink: #08130c;
     --bg: #101311; --surface: #1b1f1d; --surface-2: #222724; --ink: #e6ebe8; --muted: #93a099;
     --line: #2d3430; --hover: rgb(255 255 255 / .06); --active: rgb(255 255 255 / .1);
@@ -271,7 +279,8 @@ body.placing #viewerContainer, body.placing #viewerContainer * { cursor: copy !i
 
 /* ---------- Pro tools ---------- */
 .probadge { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .5px; color: #7a4d00; background: #ffe7a3; border-radius: 4px; padding: 1px 5px; margin-left: 6px; flex: none; }
-@media (prefers-color-scheme: dark) { .probadge { color: #ffe7a3; background: #5a4100; } }
+:root[data-theme="dark"] .probadge { color: #ffe7a3; background: #5a4100; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .probadge { color: #ffe7a3; background: #5a4100; } }
 .menu .probadge { margin-right: 4px; }
 .frow { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .frow.col { flex-direction: column; align-items: stretch; gap: 4px; }
@@ -341,10 +350,16 @@ body.presenting .pdfViewer .page { box-shadow: none; }
 }
 
 /* narrow windows */
-@media (max-width: 860px) {
-  .doc-title { display: none; }
+@media (max-width: 1360px) {
+  #btnAllTools span { display: none; }
+}
+@media (max-width: 1200px) {
   #btnEditPdf span { display: none; }
   .toolbar { overflow-x: auto; }
+  .toolbar .sep { margin: 0 2px; }
+}
+@media (max-width: 860px) {
+  .doc-title { display: none; }
 }
 @media (max-width: 640px) {
   .fl-sidebar { position: absolute; z-index: 20; top: 82px; bottom: 0; box-shadow: var(--shadow); }

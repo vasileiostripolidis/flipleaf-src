@@ -57,16 +57,20 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Flipleaf v__VERSION__"
           releaseBody: |
-            **Flipleaf** — a feather-light, private PDF reader.
+            ### Downloads
 
-            Download the file for your computer:
-            - **Windows 10/11** → `Flipleaf_x.y.z_x64-setup.exe`
-            - **Mac with Apple chip (M1–M4)** → `Flipleaf_x.y.z_aarch64.dmg`
-            - **Mac with Intel chip** → `Flipleaf_x.y.z_x64.dmg`
-            - **Linux** → `.AppImage` (any distro), `.deb` (Ubuntu/Debian) or `.rpm` (Fedora)
+            | Platform | File |
+            |:--|:--|
+            | **Windows** 10 / 11 | `Flipleaf_x.y.z_x64-setup.exe` (or `.msi` for managed installs) |
+            | **macOS** · Apple silicon | `Flipleaf_x.y.z_aarch64.dmg` |
+            | **macOS** · Intel | `Flipleaf_x.y.z_x64.dmg` |
+            | **Linux** | `.AppImage` · `.deb` · `.rpm` |
+            | **Web** | [vasileiostripolidis.github.io/flipleaf](https://vasileiostripolidis.github.io/flipleaf/) |
 
-            First launch: builds are not code-signed yet.
-            Windows: *More info → Run anyway*. macOS: right-click the app → *Open*.
+            > [!NOTE]
+            > Builds are not code-signed yet. **Windows:** *More info → Run anyway*. **macOS:** right-click the app → *Open*.
+
+            Offline · no telemetry · [Privacy](https://github.com/vasileiostripolidis/flipleaf/blob/main/PRIVACY.md) · [License](https://github.com/vasileiostripolidis/flipleaf/blob/main/EULA.md)
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
