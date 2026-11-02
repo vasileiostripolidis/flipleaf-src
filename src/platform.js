@@ -1,0 +1,113 @@
+// Platform layer: the same app runs as a desktop app (Tauri) or in a web browser.
+// Everything that touches files, windows or printing goes through here.
+
+const T = window.__TAURI__;
+export const isDesktop = !!T;
+
+const invoke = (cmd, args, opts) => T.core.invoke(cmd, args, opts);
+const baseName = (p) => p.split(/[\\/]/).pop();
+
+/* ---------------------------------------------------------------- opening */
+
+/** Shows an "Open" dialog. Resolves to { name, data, path } or null. */
+export async function pickFile() {
+  if (isDesktop) {
+    const path = await invoke("open_dialog");
+    return path ? readPath(path) : null;
+  }
+  // Web: the app listens for "change" on #fileInput and opens the chosen file itself.
+  const input = document.getElementById("fileInput");
+  input.value = "";
+  input.click();
+  return null;
+}
+
+export async function fromFile(file) {
+  return { name: file.name, data: new Uint8Array(await file.arrayBuffer()), path: null };
+}
+
+export async function readPath(path) {
+  const buf = await invoke("read_pdf", { path });
+  return { name: baseName(path), data: new Uint8Array(buf), path };
+}
+
+/** Files the OS asked us to open (double-click, "Open with", Finder). */
+export function onOpenRequest(callback) {
+  if (!isDesktop) return;
+  const drain = async () => {
+    const paths = await invoke("pending_files");
+    if (paths.length) callback(paths.at(-1));
+  };
+  T.event.listen("open-files", drain);
+  drain();
+}
+
+/* ---------------------------------------------------------------- saving */
+
+/** Overwrites the file at `path`. Desktop only. */
+export async function saveToPath(bytes, path) {
+  await invoke("save_pdf", bytes, { headers: { "x-path": encodeURIComponent(path) } });
+  return path;
+}
+
+/** "Save as" dialog. Resolves to the chosen path (desktop), "download" (web), or null if cancelled. */
+export async function saveAs(bytes, suggestedName) {
+  if (isDesktop) {
+    return invoke("save_pdf_as", bytes, { headers: { "x-name": encodeURIComponent(suggestedName) } });
+  }
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: suggestedName });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  return "download";
+}
+
+/* ---------------------------------------------------------------- recent files */
+
+export async function recentFiles() {
+  if (!isDesktop) return [];
+  try { return await invoke("recent_files"); } catch { return []; }
+}
+export async function forgetRecent(path) {
+  if (isDesktop) await invoke("forget_recent", { path }).catch(() => {});
+}
+
+/* ---------------------------------------------------------------- window */
+
+export function setWindowTitle(title) {
+  document.title = title;
+  if (isDesktop) T.window.getCurrentWindow().setTitle(title).catch(() => {});
+}
+
+export async function setFullscreen(on) {
+  if (isDesktop) {
+    await T.window.getCurrentWindow().setFullscreen(on).catch(() => {});
+  } else if (on) {
+    await document.documentElement.requestFullscreen?.().catch(() => {});
+  } else if (document.fullscreenElement) {
+    await document.exitFullscreen().catch(() => {});
+  }
+}
+
+/** Calls `ask()` before the window closes; if it resolves to false the window stays open. */
+export function guardClose(ask) {
+  if (isDesktop) {
+    const win = T.window.getCurrentWindow();
+    win.onCloseRequested(async (event) => {
+      if (!(await ask())) event.preventDefault();
+    });
+  } else {
+    addEventListener("beforeunload", (e) => { if (ask.isDirty?.()) { e.preventDefault(); e.returnValue = ""; } });
+  }
+}
+
+export function openExternal(url) {
+  if (!/^(https?:|mailto:)/i.test(url)) return;
+  if (isDesktop) invoke("open_url", { url }).catch(() => {});
+  else window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export function print() {
+  if (isDesktop) return invoke("print_window").catch(() => window.print());
+  window.print();
+}

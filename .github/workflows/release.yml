@@ -1,0 +1,72 @@
+# Builds Flipleaf installers for Windows, macOS and Linux.
+# Run it: push a tag like v1.0.0  (git tag v1.0.0 && git push --tags)
+# or press "Run workflow" in the Actions tab.
+# The installers appear as a draft Release; publish it to make the downloads public.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+          - platform: macos-latest          # Apple Silicon
+            args: "--target aarch64-apple-darwin"
+          - platform: macos-latest          # Intel Macs
+            args: "--target x86_64-apple-darwin"
+          - platform: ubuntu-22.04
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseName: "Flipleaf v__VERSION__"
+          releaseBody: |
+            **Flipleaf** — a feather-light, private PDF reader.
+
+            Download the file for your computer:
+            - **Windows 10/11** → `Flipleaf_x.y.z_x64-setup.exe`
+            - **Mac with Apple chip (M1–M4)** → `Flipleaf_x.y.z_aarch64.dmg`
+            - **Mac with Intel chip** → `Flipleaf_x.y.z_x64.dmg`
+            - **Linux** → `.AppImage` (any distro), `.deb` (Ubuntu/Debian) or `.rpm` (Fedora)
+
+            First launch: builds are not code-signed yet.
+            Windows: *More info → Run anyway*. macOS: right-click the app → *Open*.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

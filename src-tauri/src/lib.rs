@@ -1,0 +1,291 @@
+//! Flipleaf desktop shell.
+//!
+//! The viewer itself is the web app in `../src`. Rust handles what a web page can't:
+//! native Open/Save dialogs, reading and writing files, recent files, printing and
+//! opening links in the system browser.
+//!
+//! Security model: the interface can only read or overwrite PDF files that *the user*
+//! chose — opened from the OS ("Open with", double-click), picked in an Open/Save
+//! dialog, or listed in Recent files. It has no general access to the disk.
+
+use serde::Serialize;
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
+#[allow(unused_imports)]
+use tauri::{
+    ipc::{InvokeBody, Request, Response},
+    AppHandle, Emitter, Manager, State, WebviewWindow,
+};
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
+
+const MAX_RECENT: usize = 12;
+
+#[derive(Default)]
+struct Files {
+    /// Files waiting to be opened by the viewer.
+    pending: Mutex<Vec<PathBuf>>,
+    /// Files the user chose; only these may be read or written.
+    allowed: Mutex<HashSet<PathBuf>>,
+    /// Most recent first.
+    recent: Mutex<Vec<PathBuf>>,
+}
+
+fn is_pdf(p: &Path) -> bool {
+    p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+}
+
+fn normalize(p: &Path) -> PathBuf {
+    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
+}
+
+impl Files {
+    fn allow(&self, p: &Path) -> PathBuf {
+        let p = normalize(p);
+        self.allowed.lock().unwrap().insert(p.clone());
+        p
+    }
+    fn is_allowed(&self, p: &Path) -> bool {
+        let p = normalize(p);
+        self.allowed.lock().unwrap().contains(&p) || self.recent.lock().unwrap().contains(&p)
+    }
+    fn queue(&self, p: PathBuf) {
+        if is_pdf(&p) && p.is_file() {
+            let p = self.allow(&p);
+            self.pending.lock().unwrap().push(p);
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ recent files */
+
+fn recent_store(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("recent.json"))
+}
+
+fn load_recent(app: &AppHandle) -> Vec<PathBuf> {
+    recent_store(app)
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .and_then(|s| serde_json::from_str::<Vec<PathBuf>>(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_recent(app: &AppHandle, list: &[PathBuf]) {
+    if let Some(f) = recent_store(app) {
+        if let Some(dir) = f.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Ok(json) = serde_json::to_string(list) {
+            let _ = std::fs::write(f, json);
+        }
+    }
+}
+
+fn touch_recent(app: &AppHandle, files: &Files, p: &Path) {
+    let p = normalize(p);
+    let mut list = files.recent.lock().unwrap();
+    list.retain(|x| x != &p);
+    list.insert(0, p);
+    list.truncate(MAX_RECENT);
+    save_recent(app, &list);
+}
+
+#[derive(Serialize)]
+struct RecentFile {
+    path: String,
+    name: String,
+}
+
+#[tauri::command]
+fn recent_files(files: State<Files>) -> Vec<RecentFile> {
+    files
+        .recent
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|p| p.is_file())
+        .map(|p| RecentFile {
+            path: p.to_string_lossy().into_owned(),
+            name: p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn forget_recent(app: AppHandle, path: String, files: State<Files>) {
+    let p = normalize(Path::new(&path));
+    let mut list = files.recent.lock().unwrap();
+    list.retain(|x| x != &p);
+    save_recent(&app, &list);
+}
+
+/* ------------------------------------------------------------------ opening */
+
+/// Returns (and clears) the list of files waiting to be opened.
+#[tauri::command]
+fn pending_files(files: State<Files>) -> Vec<String> {
+    std::mem::take(&mut *files.pending.lock().unwrap())
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Native "Open" dialog. Returns the chosen path, or None if cancelled.
+#[tauri::command]
+async fn open_dialog(app: AppHandle, files: State<'_, Files>) -> Result<Option<String>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("PDF", &["pdf", "PDF"])
+        .blocking_pick_file();
+    let Some(path) = picked.and_then(|f| f.into_path().ok()) else {
+        return Ok(None);
+    };
+    let p = files.allow(&path);
+    Ok(Some(p.to_string_lossy().into_owned()))
+}
+
+/// Reads a file the user chose, as raw bytes.
+#[tauri::command]
+fn read_pdf(app: AppHandle, path: String, files: State<Files>) -> Result<Response, String> {
+    let p = Path::new(&path);
+    if !files.is_allowed(p) {
+        return Err("This file was not opened through Flipleaf.".into());
+    }
+    let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
+    touch_recent(&app, &files, p);
+    Ok(Response::new(bytes))
+}
+
+/* ------------------------------------------------------------------ saving */
+
+fn body_bytes(request: &Request) -> Result<Vec<u8>, String> {
+    match request.body() {
+        InvokeBody::Raw(b) => Ok(b.clone()),
+        _ => Err("Expected raw PDF bytes".into()),
+    }
+}
+
+fn header(request: &Request, name: &str) -> Option<String> {
+    let v = request.headers().get(name)?.to_str().ok()?;
+    urlencoding::decode(v).ok().map(|s| s.into_owned())
+}
+
+/// Writes atomically: to a temporary file next to the target, then renames it.
+fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() < 5 || &bytes[..5] != b"%PDF-" {
+        return Err("Refusing to write: data is not a PDF".into());
+    }
+    let tmp = target.with_extension("pdf.flipleaf-tmp");
+    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, target).or_else(|_| {
+        // rename can fail across devices or on some Windows setups; fall back to copy
+        std::fs::copy(&tmp, target).map(|_| ()).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&tmp).map_err(|e| e.to_string())
+    })
+}
+
+/// Overwrites a file the user opened.
+#[tauri::command]
+fn save_pdf(app: AppHandle, request: Request, files: State<Files>) -> Result<(), String> {
+    let path = header(&request, "x-path").ok_or("Missing path")?;
+    let p = Path::new(&path);
+    if !is_pdf(p) || !files.is_allowed(p) {
+        return Err("This file was not opened through Flipleaf.".into());
+    }
+    write_atomic(p, &body_bytes(&request)?)?;
+    touch_recent(&app, &files, p);
+    Ok(())
+}
+
+/// Native "Save as" dialog, then writes the file. Returns the chosen path, or None if cancelled.
+#[tauri::command]
+async fn save_pdf_as(app: AppHandle, request: Request<'_>, files: State<'_, Files>) -> Result<Option<String>, String> {
+    let bytes = body_bytes(&request)?;
+    let name = header(&request, "x-name").unwrap_or_else(|| "document.pdf".into());
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("PDF", &["pdf"])
+        .set_file_name(&name)
+        .blocking_save_file();
+    let Some(mut path) = picked.and_then(|f| f.into_path().ok()) else {
+        return Ok(None);
+    };
+    if !is_pdf(&path) {
+        path.set_extension("pdf");
+    }
+    write_atomic(&path, &bytes)?;
+    let p = files.allow(&path);
+    touch_recent(&app, &files, &p);
+    Ok(Some(p.to_string_lossy().into_owned()))
+}
+
+/* ------------------------------------------------------------------ misc */
+
+#[tauri::command]
+fn print_window(window: WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:")) {
+        return Err("Only web and mail links can be opened.".into());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let files = Files::default();
+    // Windows / Linux: "Open with Flipleaf" passes the file as an argument.
+    for arg in std::env::args_os().skip(1) {
+        files.queue(PathBuf::from(arg));
+    }
+
+    let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(files)
+        .setup(|app| {
+            let handle = app.handle();
+            let list = load_recent(handle);
+            *app.state::<Files>().recent.lock().unwrap() = list;
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            pending_files,
+            open_dialog,
+            read_pdf,
+            save_pdf,
+            save_pdf_as,
+            recent_files,
+            forget_recent,
+            print_window,
+            open_url
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while building Flipleaf");
+
+    app.run(|_handle, _event| {
+        // macOS: files opened from Finder arrive as an event, possibly while running.
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        if let tauri::RunEvent::Opened { urls } = &_event {
+            let files = _handle.state::<Files>();
+            for url in urls {
+                if let Ok(path) = url.to_file_path() {
+                    files.queue(path);
+                }
+            }
+            let _ = _handle.emit("open-files", ());
+            if let Some(w) = _handle.get_webview_window("main") {
+                let _ = w.set_focus();
+            }
+        }
+    });
+}
