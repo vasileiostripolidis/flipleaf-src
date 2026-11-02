@@ -230,6 +230,7 @@ pre.legal { margin: 0; height: min(52vh, 460px); overflow: auto; white-space: pr
 
 /* edit text & images */
 .editbar { gap: 8px; flex-wrap: wrap; height: auto; min-height: 44px; padding: 6px 14px; }
+.editbar .hint { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .editbar .btn.secondary.on { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
 .edit-layer { position: absolute; inset: 0; z-index: 40; cursor: default; }
 .edit-layer.adding { cursor: text; }

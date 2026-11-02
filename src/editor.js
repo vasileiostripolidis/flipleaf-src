@@ -555,6 +555,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     ui.undo.disabled = !undo.length;
     ui.addText.classList.toggle("on", mode === "addText");
     ui.hint.textContent = mode === "placeImage" ? t("editHintPlace") : mode === "addText" ? t("editHintAdd") : isText ? t("editHintText") : isImg ? t("editHintImage") : t("editHint");
+    ui.hint.title = ui.hint.textContent;
     if (isText) {
       ui.family.value = it.serif ? "serif" : "sans";
       ui.size.value = Math.round(it.size * it.scale * 10) / 10;
