@@ -4,7 +4,7 @@
 
 <h1 align="center">Flipleaf</h1>
 <p align="center"><b>A feather-light, private PDF reader and editor for Windows, macOS and Linux.</b><br>
-~4 MB installer · opens instantly · your files never leave your computer</p>
+Small installer · opens instantly · your files never leave your computer</p>
 
 <p align="center">
   <a href="../../releases/latest"><b>⬇ Download</b></a> ·
@@ -58,9 +58,9 @@ Then right-click any PDF → **Open with → Flipleaf** (you can make it the def
 
 **Comment & sign**
 - Highlight text (5 colors), freehand drawing (pen colors & thickness), text boxes, images
-- **Fill & Sign:** fill in PDF forms, draw or type your signature, keep up to 6 saved signatures
+- **Fill & Sign:** fill in PDF forms; create a signature by typing (4 signature styles), drawing, importing a photo/scan of your real signature, or generating variations; keep up to 12 saved signatures and place them with one click
 - Undo / redo
-- Everything is saved as standard PDF annotations, so it shows up in Adobe Acrobat and every other reader
+- Everything is saved as standard PDF annotations, so it shows up in every other PDF reader
 
 **Files**
 - Classic menu bar: File, Edit, View, Tools, Help
@@ -100,8 +100,8 @@ Then right-click any PDF → **Open with → Flipleaf** (you can make it the def
 Most "lightweight" desktop apps built with web tech (Electron) ship a whole copy of Chrome, which is ~100 MB.
 Flipleaf is built with [Tauri](https://tauri.app) and uses the browser engine **already in your operating system**: WebView2 on Windows, WebKit on macOS and Linux.
 
-- Installer: ~4–7 MB (Linux .deb 6.35 MB, measured; includes the PDFium editing engine)
-- App code: ~110 KB of HTML/CSS/JS + ~300 lines of Rust, no framework
+- Installer: ~5–7 MB (includes the PDFium editing engine)
+- App code: plain HTML/CSS/JS + a small Rust shell, no framework
 - PDF engine: Mozilla [PDF.js](https://mozilla.github.io/pdf.js/), the same one Firefox uses. Fonts, CMaps and image decoders load only when a PDF needs them
 
 ## How it works
@@ -133,7 +133,8 @@ Web version only: `cd src && python3 -m http.server 8000`.
 ```
 src/                     the app (shared by desktop and web)
   index.html, style.css  interface
-  app.js                 viewer, menus, tools, signatures, find, print, presentation, read aloud
+  app.js                 viewer, menus, tools, find, print, presentation, read aloud
+  signature.js           create, save and place signatures
   editor.js              edit text & images (PDFium)
   pro.js                 Pro tools (organize, convert, forms, security, comments)
   licensing.js           plans & feature gating (Pro is free during launch)
@@ -144,7 +145,7 @@ src/                     the app (shared by desktop and web)
   icons.js               Lucide icons (ISC)
   vendor/pdfjs/          Mozilla PDF.js 6.5.438 (Apache-2.0)
   vendor/pdfium/         PDFium WebAssembly (BSD-3-Clause / MIT)
-  vendor/fonts/          Flipleaf Sans & Serif (OFL-1.1)
+  vendor/fonts/          Flipleaf Sans & Serif, signature fonts (OFL-1.1)
 src-tauri/               desktop shell (Tauri 2 / Rust)
   src/lib.rs             open/save dialogs, file access, recent files, printing
   tauri.conf.json        window, security policy, .pdf association, installers
@@ -156,15 +157,17 @@ src-tauri/               desktop shell (Tauri 2 / Rust)
 - **Source code:** MIT License (`LICENSE`).
 - **End-user license agreement:** `EULA.md` (English & Greek). Shown and accepted in the Windows installer and on first launch, and always available from *Help → License & third-party notices*.
 - **Name and logo:** "Flipleaf" and the leaf logo are not covered by the MIT License (see EULA §3).
-- **Third-party components:** `THIRD-PARTY-NOTICES.txt` — Mozilla PDF.js (Apache-2.0), PDFium (BSD-3-Clause), EmbedPDF PDFium build (MIT), Tauri and every Rust crate (MIT/Apache-2.0), Lucide icons (ISC), Liberation-derived fonts (OFL-1.1).
+- **Third-party components:** `THIRD-PARTY-NOTICES.txt` — Mozilla PDF.js (Apache-2.0), PDFium (BSD-3-Clause), EmbedPDF PDFium build (MIT), Tauri and every Rust crate (MIT/Apache-2.0), Lucide icons (ISC), Liberation-derived fonts and signature fonts (OFL-1.1).
+- **Privacy:** [`PRIVACY.md`](PRIVACY.md) — Flipleaf collects no data.
+- **Security reports:** [`SECURITY.md`](SECURITY.md).
 - Regenerate the legal files after changing `EULA.md` or dependencies: `python3 scripts/legal.py`.
 
 ---
 
 ## 🇬🇷 Ελληνικά
 
-Το **Flipleaf** («ξεφυλλίζω») είναι ένα πολύ ελαφρύ PDF πρόγραμμα για Windows, macOS και Linux. Διαβάζεις, επεξεργάζεσαι το υπάρχον κείμενο και τις εικόνες, επισημαίνεις, σχεδιάζεις, συμπληρώνεις φόρμες, υπογράφεις, εκτυπώνεις και αποθηκεύεις. Το installer είναι περίπου 4 MB, δεν θέλει λογαριασμό και δεν στέλνει τίποτα στο internet. Το περιβάλλον εμφανίζεται στα ελληνικά όταν ο υπολογιστής σου είναι ρυθμισμένος στα ελληνικά.
+Το **Flipleaf** («ξεφυλλίζω») είναι ένα πολύ ελαφρύ PDF πρόγραμμα για Windows, macOS και Linux. Διαβάζεις, επεξεργάζεσαι το υπάρχον κείμενο και τις εικόνες, επισημαίνεις, σχεδιάζεις, συμπληρώνεις φόρμες, υπογράφεις, εκτυπώνεις και αποθηκεύεις. Το αρχείο εγκατάστασης είναι μικρό, δεν θέλει λογαριασμό και δεν στέλνει τίποτα στο internet. Το περιβάλλον εμφανίζεται στα ελληνικά όταν ο υπολογιστής σου είναι ρυθμισμένος στα ελληνικά.
 
-**Κατέβασμα:** από τη σελίδα [Releases](../../releases/latest) διαλέγεις `…x64-setup.exe` για Windows, `…aarch64.dmg` για Mac με τσιπ Apple, `…x64.dmg` για Mac με Intel ή `.AppImage`/`.deb` για Linux.
+**Κατέβασμα:** από τη σελίδα [Releases](../../releases/latest) διαλέγεις `…x64-setup.exe` για Windows, `…aarch64.dmg` για Mac με τσιπ Apple, `…x64.dmg` για Mac με Intel ή `.AppImage`/`.deb`/`.rpm` για Linux.
 
 **Πρώτο άνοιγμα:** τα αρχεία δεν έχουν ακόμα ψηφιακή υπογραφή. Στα Windows πατάς *Περισσότερες πληροφορίες → Εκτέλεση οπωσδήποτε*. Στο Mac κάνεις δεξί κλικ στην εφαρμογή → *Άνοιγμα*.

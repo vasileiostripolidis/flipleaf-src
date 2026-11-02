@@ -29,13 +29,6 @@ export function readFloats(n, fn) {
   const p = malloc(4 * n);
   try { return fn(p) ? Array.from({ length: n }, (_, k) => M().getValue(p + 4 * k, "float")) : null; } finally { free(p); }
 }
-/** Runs fn with temporary allocations that are freed afterwards. */
-export function scoped(fn) {
-  const list = [];
-  const track = (p) => (list.push(p), p);
-  try { return fn({ wstr: (s) => track(wstr(s)), floats: (...v) => track(floats(...v)), ints: (...v) => track(ints(...v)), bytes: (u) => track(putBytes(u)) }); }
-  finally { list.forEach(free); }
-}
 
 /** A PDF document opened in PDFium. Always call close(). */
 export class PdfDoc {
@@ -71,7 +64,6 @@ export class PdfDoc {
     for (const pg of this.pages.values()) { if (this.form) P.FORM_OnBeforeClosePage(pg, this.form); P.FPDF_ClosePage(pg); }
     this.pages.clear();
   }
-  commit(i) { P.FPDFPage_GenerateContent(this.page(i)); }
 
   size(i) { const pg = this.page(i); return [P.FPDF_GetPageWidthF(pg), P.FPDF_GetPageHeightF(pg)]; }
   mediaBox(i) { return readFloats(4, (p) => P.FPDFPage_GetMediaBox(this.page(i), p, p + 4, p + 8, p + 12)); } // l, b, r, t
@@ -97,12 +89,6 @@ export class PdfDoc {
     free(this.dataPtr);
     this.h = this.dataPtr = 0;
   }
-}
-
-/** Open → fn(doc) → save → close. Returns the new bytes. */
-export async function transform(bytes, password, fn) {
-  const doc = await PdfDoc.open(bytes, password);
-  try { const r = await fn(doc); return r instanceof Uint8Array ? r : doc.save(); } finally { doc.close(); }
 }
 
 export const pdfium = () => P;

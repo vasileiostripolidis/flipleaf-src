@@ -1,4 +1,5 @@
 // Tiny ZIP writer (stored, no compression) and a minimal .docx builder. No dependencies.
+// Header fields not set explicitly (extra/comment lengths, compression method, …) stay zero.
 
 const CRC = (() => {
   const t = new Uint32Array(256);
@@ -15,12 +16,12 @@ export function makeZip(files) {
   for (const f of files) {
     const name = enc.encode(f.name), data = typeof f.bytes === "string" ? enc.encode(f.bytes) : f.bytes, crc = crc32(data);
     const local = new DataView(new ArrayBuffer(30));
-    local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true); local.setUint16(8, 0, true);
+    local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
     local.setUint16(10, dosTime, true); local.setUint16(12, dosDate, true); local.setUint32(14, crc, true);
-    local.setUint32(18, data.length, true); local.setUint32(22, data.length, true); local.setUint16(26, name.length, true); local.setUint16(28, 0, true);
+    local.setUint32(18, data.length, true); local.setUint32(22, data.length, true); local.setUint16(26, name.length, true);
     parts.push(new Uint8Array(local.buffer), name, data);
     const cen = new DataView(new ArrayBuffer(46));
-    cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true); cen.setUint16(8, 0x0800, true); cen.setUint16(10, 0, true);
+    cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true); cen.setUint16(8, 0x0800, true);
     cen.setUint16(12, dosTime, true); cen.setUint16(14, dosDate, true); cen.setUint32(16, crc, true); cen.setUint32(20, data.length, true); cen.setUint32(24, data.length, true);
     cen.setUint16(28, name.length, true); cen.setUint32(42, offset, true);
     central.push(new Uint8Array(cen.buffer), name);

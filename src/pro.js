@@ -1,12 +1,12 @@
 // Flipleaf Pro tools: organize, convert, forms, security, comments.
 // Structural changes run in PDFium (pdfium.js); rendering and text extraction use PDF.js.
 import "./pro-strings.js";
-import { PdfDoc, getPdfium, pdfium, scoped, readFloats, malloc, free, M, heap, putBytes, wstr, floats, ints } from "./pdfium.js";
+import { PdfDoc, pdfium, readFloats, malloc, free, M, heap, putBytes, wstr, floats, ints } from "./pdfium.js";
 import { hasPro, plan } from "./licensing.js";
 import { makeZip, makeDocx } from "./zip.js";
 
 const FONT_URL = new URL("./vendor/fonts/", import.meta.url).href;
-const FPDF = { TEXT: 1, IMAGE: 3, ANNOT_TEXT: 1, ANNOT_LINE: 4, ANNOT_SQUARE: 5, ANNOT_CIRCLE: 6, FIELD_CHECK: 2, FIELD_COMBO: 4, FIELD_TEXT: 6, FIELD_SIGN: 7 };
+const FPDF = { TEXT: 1, IMAGE: 3, ANNOT_TEXT: 1, ANNOT_LINE: 4, ANNOT_SQUARE: 5, ANNOT_CIRCLE: 6, FIELD_CHECK: 2, FIELD_TEXT: 6, FIELD_SIGN: 7 };
 
 export function installPro(app) {
   const { t, toast, icon, dialog, busy, platform, viewer, eventBus, pdfjsLib, LANG } = app;
@@ -28,6 +28,28 @@ export function installPro(app) {
   async function bytesNow() { const b = await app.documentBytes(); return b instanceof Uint8Array ? b.slice() : new Uint8Array(b); }
   const baseName = () => app.doc.name.replace(/\.pdf$/i, "");
   const sizeStr = (b) => b > 1048576 ? (b / 1048576).toFixed(2) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+
+  /** Cancel / Apply dialog; resolves to "ok" when confirmed. */
+  const ask = (title, body, okLabel = t("apply")) => dialog({ title, body, buttons: [{ label: t("cancel"), value: "cancel" }, { label: okLabel, value: "ok", kind: "primary" }] });
+  /** Dialog with the wide layout (All tools, Compare). */
+  async function wideDialog(opts) {
+    const dlg = document.getElementById("dlg");
+    dlg.classList.add("wide");
+    await dialog(opts);
+    dlg.classList.remove("wide");
+  }
+  function closeDialog(v) { const d = document.getElementById("dlg"); d.returnValue = v; d.close(v); }
+  /** Fills / reads every [data-k] input of a dialog body, keyed by data-k. */
+  function fillFields(box, values) { for (const inp of box.querySelectorAll("[data-k]")) inp.value = values[inp.dataset.k]; }
+  function readFields(box) { const v = {}; for (const inp of box.querySelectorAll("[data-k]")) v[inp.dataset.k] = inp.value; return v; }
+
+  /** Copies pages `idx` of `src` into `dst` at position `at`. */
+  function importPages(dst, src, idx, at) { const p = ints(...idx); P().FPDF_ImportPagesByIndex(dst.h, src.h, p, idx.length, at); free(p); }
+  const allIndexes = (n) => [...Array(n).keys()];
+  /** New PDF made of pages `idx` of `src`. */
+  async function pdfFromPages(src, idx) { const out = await PdfDoc.create(); importPages(out, src, idx, 0); const b = out.save(); out.close(); return b; }
+  /** Adds quarter turns (deg: 90/180/270) to page k. */
+  function addRotation(doc, k, deg) { const pg = doc.page(k); P().FPDFPage_SetRotation(pg, (P().FPDFPage_GetRotation(pg) + deg / 90) % 4); }
 
   /** Opens the current document in PDFium, runs fn, and loads the result back into the viewer. */
   async function modify(fn, message = t("working")) {
@@ -62,7 +84,7 @@ export function installPro(app) {
     return box;
   }
 
-  async function pickFiles(accept, multiple = true) {
+  function pickFiles(accept, multiple) {
     const input = el("input", null, { type: "file", accept, multiple });
     return new Promise((resolve) => {
       input.onchange = () => resolve([...input.files]);
@@ -83,7 +105,7 @@ export function installPro(app) {
     return true;
   }
 
-  let fontCache = new WeakMap();
+  const fontCache = new WeakMap();
   async function font(doc, bold = false) {
     let m = fontCache.get(doc);
     if (!m) fontCache.set(doc, (m = {}));
@@ -332,7 +354,7 @@ export function installPro(app) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") { e.preventDefault(); e.stopPropagation(); selected = new Set(entries); render(); }
     };
     addEventListener("keydown", key, true);
-    const sel = () => (selected.size ? entries.filter((e) => selected.has(e)) : []);
+    const sel = () => entries.filter((e) => selected.has(e));
 
     async function act(a) {
       if (a === "cancel") return close();
@@ -357,16 +379,14 @@ export function installPro(app) {
       }
       if (a === "extract") {
         const list = sel().length ? sel() : entries;
-        const out = await buildNew(list);
-        return platform.saveBytesAs(out, `${baseName()}-pages.pdf`);
+        return platform.saveBytesAs(await buildNew(list), `${baseName()}-pages.pdf`);
       }
       if (a === "split") {
         const n = await askNumber(t("split"), t("splitEvery"), t("splitPages"), 1, Math.max(1, Math.ceil(entries.length / 2)));
         if (!n) return;
         const outs = [];
         for (let k = 0; k < entries.length; k += n) outs.push({ name: `${baseName()}-${String(k / n + 1).padStart(2, "0")}.pdf`, bytes: await buildNew(entries.slice(k, k + n)) });
-        const done = await saveMany(outs, `${baseName()}-split`);
-        if (done) toast(t("splitDone", { n: outs.length }));
+        if (await saveMany(outs, `${baseName()}-split`)) toast(t("splitDone", { n: outs.length }));
         return;
       }
       if (a === "apply") {
@@ -385,12 +405,10 @@ export function installPro(app) {
         for (const [k, f] of files) srcs.set(k, await PdfDoc.open(f.bytes));
         list.forEach((e, at) => {
           if (e.blank) { const [w, h] = out.count ? out.size(0) : [595, 842]; out.releasePages(); P().FPDFPage_New(out.h, at, w, h); return; }
-          const p = ints(e.index);
-          P().FPDF_ImportPagesByIndex(out.h, srcs.get(e.src).h, p, 1, at);
-          free(p);
+          importPages(out, srcs.get(e.src), [e.index], at);
         });
         out.releasePages();
-        list.forEach((e, at) => { if (e.rot) { const pg = out.page(at); P().FPDFPage_SetRotation(pg, (P().FPDFPage_GetRotation(pg) + e.rot / 90) % 4); } });
+        list.forEach((e, at) => { if (e.rot) addRotation(out, at, e.rot); });
         return out.save();
       } finally { out.close(); for (const d of srcs.values()) d.close(); }
     }
@@ -400,16 +418,14 @@ export function installPro(app) {
   async function applyInPlace(entries, files) {
     await modify(async (doc) => {
       // 1. append inserted pages and blank pages at the end; track where each entry lives
-      const where = new Map();
       let count = doc.count;
-      const originals = [...Array(count).keys()];
-      const live = originals.map((i) => ({ src: 0, index: i })); // live[k] = what is at position k
+      const live = allIndexes(count).map((i) => ({ src: 0, index: i })); // live[k] = what is at position k
       for (const e of entries) {
         if (e.src === 0) continue;
         if (e.blank) { const [w, h] = doc.size(0); doc.releasePages(); P().FPDFPage_New(doc.h, count, w, h); }
         else {
           const src = await PdfDoc.open(files.get(e.src).bytes);
-          const p = ints(e.index); P().FPDF_ImportPagesByIndex(doc.h, src.h, p, 1, count); free(p); src.close();
+          importPages(doc, src, [e.index], count); src.close();
         }
         live.push(e); count++;
       }
@@ -431,20 +447,20 @@ export function installPro(app) {
       });
       doc.releasePages();
       // 4. rotations
-      entries.forEach((e, k) => { if (e.rot) { const pg = doc.page(k); P().FPDFPage_SetRotation(pg, (P().FPDFPage_GetRotation(pg) + e.rot / 90) % 4); } });
+      entries.forEach((e, k) => { if (e.rot) addRotation(doc, k, e.rot); });
     });
   }
 
   async function askNumber(title, label, suffix, min, value) {
     const box = html(`<label class="frow"><span>${label}</span><input class="field" type="number" min="${min}" value="${value}" style="width:90px"><span>${suffix}</span></label>`);
-    const r = await dialog({ title, body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
+    const r = await ask(title, box);
     const n = parseInt(box.querySelector("input").value, 10);
     return r === "ok" && n >= min ? n : null;
   }
 
   const combine = gate("combine", async () => {
     const list = await pickFiles("application/pdf,.pdf", true);
-    if (list.length < 1) return;
+    if (!list.length) return;
     const overlay = busy(t("working"));
     try {
       const all = await Promise.all(list.map(async (f) => new Uint8Array(await f.arrayBuffer())));
@@ -452,12 +468,10 @@ export function installPro(app) {
       try {
         for (const b of all.slice(1)) {
           const src = await PdfDoc.open(b);
-          const n = src.count, p = ints(...Array(n).keys());
-          P().FPDF_ImportPagesByIndex(base.h, src.h, p, n, base.count);
-          free(p); src.close();
+          importPages(base, src, allIndexes(src.count), base.count);
+          src.close();
         }
-        const bytes = base.save();
-        await app.openData({ name: `${t("combined")}.pdf`, data: bytes, path: null }, { dirty: true });
+        await app.openData({ name: `${t("combined")}.pdf`, data: base.save(), path: null }, { dirty: true });
       } finally { base.close(); }
     } finally { overlay.remove(); }
   });
@@ -469,26 +483,23 @@ export function installPro(app) {
     const at = viewer.currentPageNumber;
     await modify(async (doc) => {
       const src = await PdfDoc.open(bytes);
-      const n = src.count, p = ints(...Array(n).keys());
-      P().FPDF_ImportPagesByIndex(doc.h, src.h, p, n, at);
-      free(p); src.close();
+      importPages(doc, src, allIndexes(src.count), at);
+      src.close();
     });
   });
 
   const extract = gate("extract", async () => {
     const box = html(`<label class="frow"><span>${t("extractWhich")}</span><input class="field" value="${viewer.currentPageNumber}" style="flex:1"></label>
       <label class="frow"><input type="checkbox"> <span>${t("extractSep")}</span></label>`);
-    const r = await dialog({ title: t("extract"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
+    if (await ask(t("extract"), box) !== "ok") return;
     const pages = parseRange(box.querySelector(".field").value, app.doc.pdf.numPages);
     if (!pages.length) return;
     const separate = box.querySelector("[type=checkbox]").checked;
     const src = await PdfDoc.open(await bytesNow(), pw());
     try {
-      const make = async (idx) => { const out = await PdfDoc.create(); const p = ints(...idx); P().FPDF_ImportPagesByIndex(out.h, src.h, p, idx.length, 0); free(p); const b = out.save(); out.close(); return b; };
-      if (!separate) return platform.saveBytesAs(await make(pages), `${baseName()}-pages.pdf`);
+      if (!separate) return platform.saveBytesAs(await pdfFromPages(src, pages), `${baseName()}-pages.pdf`);
       const outs = [];
-      for (const i of pages) outs.push({ name: `${baseName()}-p${i + 1}.pdf`, bytes: await make([i]) });
+      for (const i of pages) outs.push({ name: `${baseName()}-p${i + 1}.pdf`, bytes: await pdfFromPages(src, [i]) });
       if (await saveMany(outs, `${baseName()}-pages`)) toast(t("splitDone", { n: outs.length }));
     } finally { src.close(); }
   });
@@ -501,10 +512,8 @@ export function installPro(app) {
     try {
       const outs = [];
       for (let k = 0; k < total; k += n) {
-        const idx = [...Array(Math.min(n, total - k)).keys()].map((x) => x + k);
-        const out = await PdfDoc.create(); const p = ints(...idx);
-        P().FPDF_ImportPagesByIndex(out.h, src.h, p, idx.length, 0); free(p);
-        outs.push({ name: `${baseName()}-${String(k / n + 1).padStart(2, "0")}.pdf`, bytes: out.save() }); out.close();
+        const idx = allIndexes(Math.min(n, total - k)).map((x) => x + k);
+        outs.push({ name: `${baseName()}-${String(k / n + 1).padStart(2, "0")}.pdf`, bytes: await pdfFromPages(src, idx) });
       }
       if (await saveMany(outs, `${baseName()}-split`)) toast(t("splitDone", { n: outs.length }));
     } finally { src.close(); }
@@ -514,8 +523,7 @@ export function installPro(app) {
     const box = html(`<div class="grid4">
       ${["cropTop", "cropBottom", "cropLeft", "cropRight"].map((k) => `<label class="frow"><span>${t(k)}</span><input class="field" type="number" min="0" step="1" value="10" data-k="${k}" style="width:80px"><span>${t("cropUnit")}</span></label>`).join("")}</div>`);
     const range = rangePicker(); box.append(range);
-    const r = await dialog({ title: t("crop"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
+    if (await ask(t("crop"), box) !== "ok") return;
     const mm = (k) => Math.max(0, +box.querySelector(`[data-k="${k}"]`).value || 0) * 72 / 25.4;
     const [top, bottom, left, right] = ["cropTop", "cropBottom", "cropLeft", "cropRight"].map(mm);
     await modify((doc) => {
@@ -529,13 +537,13 @@ export function installPro(app) {
     });
   });
 
-  function tokens(text, i, total, bates) {
+  function tokens(text, i, total) {
     const d = new Date().toLocaleDateString(LANG === "el" ? "el-GR" : undefined);
-    return text.replaceAll("{page}", i + 1).replaceAll("{pages}", total).replaceAll("{date}", d).replaceAll("{file}", app.doc.name).replaceAll("{bates}", bates ?? "");
+    return text.replaceAll("{page}", i + 1).replaceAll("{pages}", total).replaceAll("{date}", d).replaceAll("{file}", app.doc.name).replaceAll("{bates}", "");
   }
 
   const headerFooter = gate("headerFooter", async (preset = null) => {
-    const saved = app.store.get("hf", { hl: "", hc: "", hr: "", fl: "", fc: preset === "pages" ? "{page} / {pages}" : "", fr: "", size: 9, color: "#333333", margin: 12 });
+    const saved = app.store.get("hf", { hl: "", hc: "", hr: "", fl: "", fc: "", fr: "", size: 9, color: "#333333", margin: 12 });
     if (preset === "pages") saved.fc ||= "{page} / {pages}";
     const box = html(`<p class="muted small" style="margin:0 0 10px">${t("hfTokens")}</p>
       <div class="hf"><span></span><b>${t("hfLeft")}</b><b>${t("hfCenter")}</b><b>${t("hfRight")}</b>
@@ -544,18 +552,17 @@ export function installPro(app) {
       <div class="frow wrap"><label class="frow"><span>${t("fontSize")}</span><input class="field" type="number" data-k="size" min="5" max="48" style="width:64px"></label>
       <label class="frow"><span>${t("color")}</span><input type="color" class="colorpick" data-k="color"></label>
       <label class="frow"><span>${t("margin")}</span><input class="field" type="number" data-k="margin" min="0" max="80" style="width:64px"><span>mm</span></label></div>`);
-    for (const inp of box.querySelectorAll("[data-k]")) inp.value = saved[inp.dataset.k];
+    fillFields(box, saved);
     const range = rangePicker(); box.append(range);
-    const r = await dialog({ title: t("headerFooter"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
-    const v = {}; for (const inp of box.querySelectorAll("[data-k]")) v[inp.dataset.k] = inp.value;
+    if (await ask(t("headerFooter"), box) !== "ok") return;
+    const v = readFields(box);
     app.store.set("hf", v);
     await stampAll(range, (i, total) => [
       ["hl", 0, "top"], ["hc", 0.5, "top"], ["hr", 1, "top"], ["fl", 0, "bottom"], ["fc", 0.5, "bottom"], ["fr", 1, "bottom"],
     ].filter(([k]) => v[k].trim()).map(([k, align, where]) => ({ text: tokens(v[k], i, total), align, where })), { size: +v.size || 9, color: hexRgb(v.color), margin: (+v.margin || 12) * 72 / 25.4 });
   });
 
-  async function stampAll(range, linesFor, { size, color, margin, bates }) {
+  async function stampAll(range, linesFor, { size, color, margin }) {
     await modify(async (doc) => {
       const total = doc.count;
       for (const i of range.pages(total)) {
@@ -576,11 +583,10 @@ export function installPro(app) {
       <label class="frow"><span>${t("color")}</span><input type="color" class="colorpick" data-k="color"></label>
       <label class="frow"><span>${t("wmOpacity")}</span><input type="range" data-k="opacity" min="5" max="100"></label>
       <label class="frow"><span>${t("wmAngle")}</span><input class="field" type="number" data-k="angle" min="-90" max="90" style="width:64px"><span>°</span></label></div>`);
-    for (const inp of box.querySelectorAll("[data-k]")) inp.value = saved[inp.dataset.k];
+    fillFields(box, saved);
     const range = rangePicker(); box.append(range);
-    const r = await dialog({ title: t("watermark"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
-    const v = {}; for (const inp of box.querySelectorAll("[data-k]")) v[inp.dataset.k] = inp.value;
+    if (await ask(t("watermark"), box) !== "ok") return;
+    const v = readFields(box);
     app.store.set("wm", v);
     if (!v.text.trim()) return;
     await modify(async (doc) => {
@@ -593,7 +599,7 @@ export function installPro(app) {
   });
 
   const bates = gate("bates", async () => {
-    const saved = app.store.get("bates", { prefix: "DOC-", start: 1, digits: 6, pos: "fr", size: 9 });
+    const saved = app.store.get("bates", { prefix: "DOC-", start: 1, digits: 6, pos: "fr" });
     const box = html(`<div class="frow wrap">
       <label class="frow"><span>${t("batesPrefix")}</span><input class="field" data-k="prefix" style="width:110px"></label>
       <label class="frow"><span>${t("batesStart")}</span><input class="field" type="number" data-k="start" min="0" style="width:90px"></label>
@@ -601,14 +607,12 @@ export function installPro(app) {
       <label class="frow"><span>${t("batesPos")}</span><select class="field" data-k="pos">
         <option value="hl">${t("hfHeader")} · ${t("hfLeft")}</option><option value="hr">${t("hfHeader")} · ${t("hfRight")}</option>
         <option value="fl">${t("hfFooter")} · ${t("hfLeft")}</option><option value="fc">${t("hfFooter")} · ${t("hfCenter")}</option><option value="fr">${t("hfFooter")} · ${t("hfRight")}</option></select></label></div>`);
-    for (const inp of box.querySelectorAll("[data-k]")) inp.value = saved[inp.dataset.k];
-    const r = await dialog({ title: t("bates"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
-    const v = {}; for (const inp of box.querySelectorAll("[data-k]")) v[inp.dataset.k] = inp.value;
+    fillFields(box, saved);
+    if (await ask(t("bates"), box) !== "ok") return;
+    const v = readFields(box);
     app.store.set("bates", v);
     const align = { l: 0, c: 0.5, r: 1 }[v.pos[1]], where = v.pos[0] === "h" ? "top" : "bottom";
-    const all = { pages: (n) => [...Array(n).keys()] };
-    await stampAll(all, (i) => [{ text: v.prefix + String((+v.start || 0) + i).padStart(+v.digits || 6, "0"), align, where }], { size: 9, color: [0, 0, 0], margin: 12 * 72 / 25.4 });
+    await stampAll({ pages: allIndexes }, (i) => [{ text: v.prefix + String((+v.start || 0) + i).padStart(+v.digits || 6, "0"), align, where }], { size: 9, color: [0, 0, 0], margin: 12 * 72 / 25.4 });
   });
 
   /* ============================================================ CONVERT */
@@ -641,8 +645,7 @@ export function installPro(app) {
   const imagesToPdf = gate("imagesToPdf", async () => {
     const box = html(`<p class="muted small" style="margin:0 0 10px">${t("imagesHint")}</p>
       <label class="frow"><span>${t("pageSize")}</span><select class="field" data-size><option value="a4">${t("a4")}</option><option value="fit">${t("fitImage")}</option></select></label>`);
-    const r = await dialog({ title: t("imagesToPdf"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("chooseFiles"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
+    if (await ask(t("imagesToPdf"), box, t("chooseFiles")) !== "ok") return;
     const mode = box.querySelector("[data-size]").value;
     const list = await pickFiles("image/*", true);
     if (!list.length) return;
@@ -673,8 +676,7 @@ export function installPro(app) {
     const box = html(`<div class="frow wrap"><label class="frow"><span>${t("imgFormat")}</span><select class="field" data-f><option value="png">PNG</option><option value="jpeg">JPEG</option></select></label>
       <label class="frow"><span>${t("imgDpi")}</span><select class="field" data-d><option>72</option><option selected>150</option><option>300</option></select></label></div>`);
     const range = rangePicker(); box.append(range);
-    const r = await dialog({ title: t("exportImages"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
+    if (await ask(t("exportImages"), box) !== "ok") return;
     const fmt = box.querySelector("[data-f]").value, dpi = +box.querySelector("[data-d]").value;
     const pdf = app.doc.pdf, pages = range.pages(pdf.numPages);
     const overlay = busy(t("working"));
@@ -724,7 +726,7 @@ export function installPro(app) {
       let cur = null, prev = null;
       for (const l of lines.filter((x) => x.text)) {
         const gap = prev ? prev.y - l.y : 0;
-        const same = cur && gap < prev.size * 1.6 && Math.abs(l.size - prev.size) < 1.5 && l.bold === prev.bold && !/[.:;!?·]$/.test(cur.text) === true;
+        const same = cur && gap < prev.size * 1.6 && Math.abs(l.size - prev.size) < 1.5 && l.bold === prev.bold && !/[.:;!?·]$/.test(cur.text);
         if (same) cur.text = cur.text.endsWith("-") ? cur.text.slice(0, -1) + l.text : cur.text + " " + l.text;
         else { cur = { text: l.text, size: l.size, bold: l.bold }; paras.push(cur); }
         prev = l;
@@ -757,8 +759,7 @@ export function installPro(app) {
   const compress = gate("compress", async () => {
     const box = html(`<label class="frow"><span>${t("compressLevel")}</span><select class="field">
       <option value="200">${t("compressHigh")}</option><option value="150" selected>${t("compressMedium")}</option><option value="96">${t("compressLow")}</option></select></label>`);
-    const r = await dialog({ title: t("compress"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
+    if (await ask(t("compress"), box) !== "ok") return;
     const target = +box.querySelector("select").value, quality = target >= 200 ? 0.82 : target >= 150 ? 0.72 : 0.6;
     const before = await bytesNow();
     const overlay = busy(t("working"));
@@ -802,8 +803,8 @@ export function installPro(app) {
         out = doc.save();
       } finally { doc.close(); }
     } finally { overlay.remove(); }
-    const a = before.length, b = out?.length || 0; // read sizes now: the viewer takes ownership of the buffers
-    if (!out || b >= a * 0.97) { toast(t("compressNone"), 5000); return; }
+    const a = before.length, b = out.length; // read sizes now: the viewer takes ownership of the buffers
+    if (b >= a * 0.97) { toast(t("compressNone"), 5000); return; }
     await app.replaceDocumentData(out);
     toast(t("compressResult", { a: sizeStr(a), b: sizeStr(b), p: Math.round(100 - b * 100 / a) }), 6000);
   });
@@ -876,8 +877,7 @@ export function installPro(app) {
         <label><input type="checkbox" data-p="528" checked> ${t("allowCopy")}</label>
         <label><input type="checkbox" data-p="1032"> ${t("allowEdit")}</label>
         <label><input type="checkbox" data-p="288" checked> ${t("allowComment")}</label></div>`);
-    const r = await dialog({ title: t("protect"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
+    if (await ask(t("protect"), box) !== "ok") return;
     const user = box.querySelector("[data-u]").value, owner = box.querySelector("[data-o]").value;
     if (!user && !owner) { toast(t("pwMismatch")); return; }
     let flags = 0xfffff0c0;
@@ -898,11 +898,9 @@ export function installPro(app) {
   const removeSecurity = gate("removeSecurity", async () => {
     const enc = await app.doc.pdf.getPermissions().catch(() => null);
     if (!app.doc.password && !enc) { toast(t("notProtected")); return; }
-    const old = pw();
-    const out = await (async () => {
-      const doc = await PdfDoc.open(await bytesNow(), old);
-      try { P().EPDF_RemoveEncryption(doc.h); return doc.save(); } finally { doc.close(); }
-    })();
+    const doc = await PdfDoc.open(await bytesNow(), pw());
+    let out;
+    try { P().EPDF_RemoveEncryption(doc.h); out = doc.save(); } finally { doc.close(); }
     app.doc.password = undefined;
     await app.replaceDocumentData(out);
     toast(t("unprotected"), 5000);
@@ -921,8 +919,7 @@ export function installPro(app) {
     const findBtn = el("button", t("redactFind"), { className: "btn sm secondary" });
     findBtn.onclick = async () => {
       const box = html(`<input class="field" style="width:100%" placeholder="${t("redactSearch")}">`).firstElementChild;
-      const r = await dialog({ title: t("redactFind"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-      if (r !== "ok" || !box.value.trim()) return;
+      if (await ask(t("redactFind"), box) !== "ok" || !box.value.trim()) return;
       const found = await findTextAreas(app.doc.pdf, box.value.trim());
       pick.add(found);
       toast(t("redactMarked", { n: found.length }));
@@ -938,12 +935,12 @@ export function installPro(app) {
           const rp = floats(l, tp, r, b);
           P().EPDFText_RedactInRect(pg, rp, true, false);
           free(rp);
-          // remove images and drawings that touch the area
+          // remove images that touch the area
           for (let k = P().FPDFPage_CountObjects(pg) - 1; k >= 0; k--) {
-            const obj = P().FPDFPage_GetObject(pg, k), type = P().FPDFPageObj_GetType(obj);
-            if (type === FPDF.TEXT) continue;
+            const obj = P().FPDFPage_GetObject(pg, k);
+            if (P().FPDFPageObj_GetType(obj) !== FPDF.IMAGE) continue;
             const bb = readFloats(4, (p) => P().FPDFPageObj_GetBounds(obj, p, p + 4, p + 8, p + 12));
-            if (bb && bb[0] < r && bb[2] > l && bb[1] < tp && bb[3] > b && type === FPDF.IMAGE) { if (P().FPDFPage_RemoveObject(pg, obj)) P().FPDFPageObj_Destroy(obj); }
+            if (bb && bb[0] < r && bb[2] > l && bb[1] < tp && bb[3] > b && P().FPDFPage_RemoveObject(pg, obj)) P().FPDFPageObj_Destroy(obj);
           }
           const box = P().FPDFPageObj_CreateNewRect(l, b, r - l, tp - b);
           P().FPDFPageObj_SetFillColor(box, 0, 0, 0, 255);
@@ -980,8 +977,7 @@ export function installPro(app) {
     const at = await pick.start({ title: t("notes"), hint: t("noteHint"), mode: "point" });
     if (!at?.length) return;
     const box = html(`<textarea class="field" rows="5" style="width:100%;height:auto;padding:8px"></textarea>`).firstElementChild;
-    const r = await dialog({ title: t("noteText"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok" || !box.value.trim()) return;
+    if (await ask(t("noteText"), box) !== "ok" || !box.value.trim()) return;
     const [{ page, point: [x, y] }] = at;
     await modify((doc) => {
       const pg = doc.page(page);
@@ -1033,7 +1029,7 @@ export function installPro(app) {
     const w = Math.ceil(Math.max(g.measureText(text).width, withDate ? g.measureText(date).width * 0.5 : 0)) + 80, h = withDate ? 170 : 120;
     c.width = w; c.height = h;
     g.strokeStyle = color; g.fillStyle = color; g.lineWidth = 8;
-    const r = 18; g.beginPath(); g.roundRect(6, 6, w - 12, h - 12, r); g.stroke();
+    g.beginPath(); g.roundRect(6, 6, w - 12, h - 12, 18); g.stroke();
     g.font = font; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(text, w / 2, withDate ? 62 : h / 2 + 2);
     if (withDate) { g.font = '600 32px "Flipleaf Sans", Arial, sans-serif'; g.fillText(date, w / 2, 122); }
     return c;
@@ -1048,17 +1044,15 @@ export function installPro(app) {
       const b = el("button"); b.type = "button"; b.className = "stampbtn";
       const img = stampImage(t(k), color, false); img.style.width = "100%";
       b.append(img);
-      b.onclick = () => { chosen = { text: t(k), color }; $$dlgClose("ok"); };
+      b.onclick = () => { chosen = { text: t(k), color }; closeDialog("ok"); };
       grid.append(b);
     }
-    const r = await dialog({ title: t("stamps"), body: box, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("apply"), value: "ok", kind: "primary" }] });
-    if (r !== "ok") return;
+    if (await ask(t("stamps"), box) !== "ok") return;
     if (!chosen) { const tx = box.querySelector("[data-t]").value.trim(); if (!tx) return; chosen = { text: tx.toUpperCase(), color: box.querySelector("[data-c]").value }; }
     const canvas = stampImage(chosen.text, chosen.color, box.querySelector("[data-d]").checked);
     const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
     await app.addImage(new File([blob], "stamp.png", { type: "image/png" }));
   });
-  function $$dlgClose(v) { const d = document.getElementById("dlg"); d.returnValue = v; d.close(v); }
 
   /* comments panel */
   const SUBTYPES = { Text: "noteText", FreeText: "hlText", Highlight: "hlHighlight", Underline: "hlHighlight", StrikeOut: "hlHighlight", Ink: "hlInk", Square: "shapeRect", Circle: "shapeEllipse", Line: "shapeLine", Polygon: "shapes", PolyLine: "shapes", Stamp: "stamps", FileAttachment: "orgInsert", Caret: "noteText" };
@@ -1115,9 +1109,7 @@ export function installPro(app) {
       list.append(row);
     }
     box.append(list);
-    document.getElementById("dlg").classList.add("wide");
-    await dialog({ title: `${t("compare")} — ${app.doc.name} ↔ ${f.name}`, body: box, buttons: [{ label: t("ok"), value: "ok", kind: "primary" }] });
-    document.getElementById("dlg").classList.remove("wide");
+    await wideDialog({ title: `${t("compare")} — ${app.doc.name} ↔ ${f.name}`, body: box, buttons: [{ label: t("ok"), value: "ok", kind: "primary" }] });
   });
 
   /** Line diff (LCS). Lines only in `a` are removed (−), only in `b` are added (+). */
@@ -1177,15 +1169,13 @@ export function installPro(app) {
         b.disabled = !app.doc.pdf && !it.noDoc;
         b.innerHTML = `${icon(it.icon, 20)}<span></span>${it.free ? "" : `<em class="probadge">${t("pro")}</em>`}`;
         b.querySelector("span").textContent = t(it.id).replace(/…$/, "");
-        b.onclick = () => { $$dlgClose("cancel"); setTimeout(() => it.run(), 50); };
+        b.onclick = () => { closeDialog("cancel"); setTimeout(() => it.run(), 50); };
         grid.append(b);
       }
       sec.append(grid); box.append(sec);
     }
     if (plan() === "launch") box.append(el("p", t("launchFree"), { className: "muted small" }));
-    document.getElementById("dlg").classList.add("wide");
-    await dialog({ title: t("allTools"), body: box, buttons: [] });
-    document.getElementById("dlg").classList.remove("wide");
+    await wideDialog({ title: t("allTools"), body: box, buttons: [] });
   }
 
   return { menuItems, allTools, refreshComments, pickActive: () => pick.active, organize, combine, imagesToPdf, protect, redact, compare, exportWord, compress, notes, shapes, stamps, prepareForm, headerFooter };

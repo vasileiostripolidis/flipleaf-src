@@ -54,7 +54,6 @@ kbd { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; col
 .btn.primary { background: var(--brand); color: var(--brand-ink); font-weight: 600; }
 .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, black); }
 .btn.secondary { background: var(--surface-2); border: 1px solid var(--line); }
-.btn.danger { color: #c4322b; }
 .btn.on, .btn[aria-pressed="true"] { background: var(--brand-soft); color: var(--brand); }
 .btn.accent { color: var(--brand); font-weight: 600; }
 .btn.accent:hover:not(:disabled) { background: var(--brand-soft); }
@@ -99,7 +98,6 @@ select.field { padding-right: 4px; cursor: pointer; }
 .winctl button:hover { background: rgb(255 255 255 / .1); }
 .winctl button.close:hover { background: #c42b1c; color: #fff; }
 body.mac-titlebar .appbar { padding-left: 78px; }
-body.custom-titlebar .appbar { padding-right: 0; }
 
 /* ---------- tool bar ---------- */
 .toolbar {
@@ -130,7 +128,6 @@ body.custom-titlebar .appbar { padding-right: 0; }
 #viewerContainer.hand .textLayer, #viewerContainer.hand .textLayer span { cursor: inherit; user-select: none; }
 .pdfViewer { padding: 14px 0 28px; }
 .pdfViewer .page { box-shadow: 0 1px 3px rgb(0 0 0 / .16), 0 6px 20px rgb(0 0 0 / .06); border: 0 !important; margin: 10px auto 14px !important; }
-.pdfViewer.removePageBorders .page { margin-bottom: 14px !important; }
 body.night .pdfViewer .page .canvasWrapper, body.night .thumb canvas { filter: invert(.9) hue-rotate(180deg); }
 body.night .pdfViewer .page { background: #1a1a1a; }
 
@@ -194,7 +191,6 @@ body.night .pdfViewer .page { background: #1a1a1a; }
 .menu button:hover { background: var(--hover); }
 .menu button[aria-checked="true"] { color: var(--brand); font-weight: 600; }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
-.menu-label { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 6px 10px 2px; }
 
 /* ---------- modal ---------- */
 .modal { border: 0; padding: 0; border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); width: min(560px, calc(100vw - 32px)); }
@@ -219,14 +215,7 @@ pre.legal { margin: 0; height: min(52vh, 460px); overflow: auto; white-space: pr
 .tabs button { border: 0; background: none; font: inherit; color: var(--muted); padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .tabs button.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
 .sigpad { width: 100%; height: 180px; border: 1px dashed var(--line); border-radius: 10px; background: #fff; touch-action: none; cursor: crosshair; display: block; }
-.sigtyped { width: 100%; height: 120px; display: grid; place-items: center; background: #fff; color: #111; border: 1px dashed var(--line); border-radius: 10px; margin-top: 10px;
-  font: 44px/1 "Segoe Script", "Brush Script MT", "Snell Roundhand", "URW Chancery L", cursive; overflow: hidden; }
 .sigrow { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; gap: 8px; }
-.sigsaved { display: flex; gap: 10px; flex-wrap: wrap; }
-.sigsaved .item { position: relative; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 6px; cursor: pointer; }
-.sigsaved .item:hover { box-shadow: 0 0 0 2px var(--brand); }
-.sigsaved img { display: block; height: 56px; max-width: 220px; }
-.sigsaved .del { position: absolute; top: -8px; right: -8px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; display: grid; place-items: center; padding: 0; }
 
 /* ---------- misc ---------- */
 .readbar { position: fixed; bottom: 18px; left: 50%; translate: -50% 0; z-index: 40; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); }

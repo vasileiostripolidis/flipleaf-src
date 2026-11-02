@@ -81,7 +81,7 @@ function loadFonts() {
 /* ------------------------------------------------------------ storage */
 
 const KEY = "flipleaf.signatures.v2";
-export const sigStore = {
+const sigStore = {
   list() {
     try {
       const v2 = JSON.parse(localStorage.getItem(KEY));
@@ -354,9 +354,9 @@ export function createSignatureStudio({ dialog, icon, toast, store }) {
       });
     }
 
-    // start on saved signatures if there are any
-    show(sigStore.list().length ? "saved" : "type");
-    if (sigStore.list().length) { savedPick = sigStore.list()[0]; renderSaved(); }
+    // start on saved signatures if there are any, with the default one picked
+    savedPick = sigStore.list()[0] || null;
+    show(savedPick ? "saved" : "type");
 
     document.getElementById("dlg").classList.add("wide");
     const result = await dialog({ title: t("sigTitle"), body, buttons: [{ label: t("cancel"), value: "cancel", kind: "secondary" }, { label: t("sigPlace"), value: "place", kind: "primary" }] });

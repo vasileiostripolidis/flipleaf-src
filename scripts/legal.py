@@ -28,9 +28,8 @@ def rust_crates():
         ["cargo", "metadata", "--format-version", "1", "--locked"],
         cwd=ROOT / "src-tauri", text=True))
     root = meta["resolve"]["root"]
-    rows = sorted({(p["name"], p["version"], p.get("license") or "see crate")
+    return sorted({(p["name"], p["version"], p.get("license") or "see crate")
                    for p in meta["packages"] if p["id"] != root})
-    return rows
 
 
 SECTIONS = [

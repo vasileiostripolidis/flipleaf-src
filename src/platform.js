@@ -59,18 +59,19 @@ export async function saveAs(bytes, suggestedName) {
   if (isDesktop) {
     return invoke("save_pdf_as", bytes, { headers: { "x-name": encodeURIComponent(suggestedName) } });
   }
-  const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-  const a = Object.assign(document.createElement("a"), { href: url, download: suggestedName });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
-  return "download";
+  return download(bytes, suggestedName, "application/pdf");
 }
 
 /** "Save as" for any file type (Word, images, text, zip…). Resolves to a path / "download", or null if cancelled. */
 export async function saveBytesAs(bytes, name) {
   if (isDesktop) return invoke("save_bytes_as", bytes, { headers: { "x-name": encodeURIComponent(name) } });
   const types = { pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", txt: "text/plain", png: "image/png", jpg: "image/jpeg", zip: "application/zip" };
-  const url = URL.createObjectURL(new Blob([bytes], { type: types[name.split(".").pop().toLowerCase()] || "application/octet-stream" }));
+  return download(bytes, name, types[name.split(".").pop().toLowerCase()] || "application/octet-stream");
+}
+
+/** Web: hands the bytes to the browser as a download. */
+function download(bytes, name, type) {
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);

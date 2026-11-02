@@ -14,11 +14,12 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-#[allow(unused_imports)]
 use tauri::{
     ipc::{InvokeBody, Request, Response},
-    AppHandle, Emitter, Manager, State, WebviewWindow,
+    AppHandle, Manager, State, WebviewWindow,
 };
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -304,9 +305,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(files)
         .setup(|app| {
-            let handle = app.handle();
-            let list = load_recent(handle);
-            *app.state::<Files>().recent.lock().unwrap() = list;
+            *app.state::<Files>().recent.lock().unwrap() = load_recent(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

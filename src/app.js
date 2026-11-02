@@ -13,11 +13,23 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.4.1";
+const VERSION = "1.5.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
+const LOAD_OPTIONS = {
+  cMapUrl: BASE + "cmaps/",
+  cMapPacked: true,
+  standardFontDataUrl: BASE + "standard_fonts/",
+  wasmUrl: BASE + "wasm/",
+  iccUrl: BASE + "iccs/",
+  isEvalSupported: false,
+  enableXfa: true,
+};
 
 const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const isMac = /Mac/.test(navigator.platform);
+const mod = isMac ? "⌘" : "Ctrl+", shift = isMac ? "⇧" : "Shift+";
 const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem("flipleaf." + k)) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem("flipleaf." + k, JSON.stringify(v)); } catch {} },
@@ -61,16 +73,7 @@ async function openData({ name, data, path }, { dirty = false } = {}) {
   if (editor.active) await editor.exit(false);
   await closeDocument();
   doc.password = undefined;
-  const loadingTask = pdfjsLib.getDocument({
-    data,
-    cMapUrl: BASE + "cmaps/",
-    cMapPacked: true,
-    standardFontDataUrl: BASE + "standard_fonts/",
-    wasmUrl: BASE + "wasm/",
-    iccUrl: BASE + "iccs/",
-    isEvalSupported: false,
-    enableXfa: true,
-  });
+  const loadingTask = pdfjsLib.getDocument({ data, ...LOAD_OPTIONS });
   doc.task = loadingTask;
   loadingTask.onPassword = async (update, reason) => {
     const pw = await askPassword(name, reason === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD);
@@ -102,7 +105,7 @@ async function openData({ name, data, path }, { dirty = false } = {}) {
   updateTitle();
   $("pageCount").textContent = "/ " + pdf.numPages;
 
-  buildThumbnails();
+  thumbs.build();
   buildOutline();
   if (dirty) setDirty(true);
   pdf.getFieldObjects().then((f) => { if (f && Object.keys(f).length) toast(t("forms"), 5000); }).catch(() => {});
@@ -279,9 +282,9 @@ function fitZoomWidth() {
   if (!opt) return;
   const cs = getComputedStyle(zoomSelect);
   measureCtx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-  const text = measureCtx.measureText(opt.textContent.trim()).width;
+  const label = measureCtx.measureText(opt.textContent.trim()).width;
   const chrome = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth) + 26; // + dropdown arrow
-  zoomSelect.style.width = Math.ceil(text + chrome) + "px";
+  zoomSelect.style.width = Math.ceil(label + chrome) + "px";
 }
 fitZoomWidth();
 document.fonts?.ready.then(fitZoomWidth);
@@ -291,8 +294,8 @@ $("btnZoomOut").onclick = () => viewer.decreaseScale();
 container.addEventListener("wheel", (e) => {
   if (!(e.ctrlKey || e.metaKey) || !doc.pdf) return;
   e.preventDefault();
-  if (e.deltaY < 0) viewer.increaseScale({ drawingDelay: 300, scaleFactor: Math.exp(-e.deltaY / 300) });
-  else viewer.decreaseScale({ drawingDelay: 300, scaleFactor: Math.exp(-e.deltaY / 300) });
+  const opts = { drawingDelay: 300, scaleFactor: Math.exp(-e.deltaY / 300) };
+  if (e.deltaY < 0) viewer.increaseScale(opts); else viewer.decreaseScale(opts);
 }, { passive: false });
 
 function rotate(delta) {
@@ -333,15 +336,18 @@ const toolPrefs = store.get("toolPrefs", {});
 
 async function setTool(name) {
   if (!doc.pdf && name !== "select") return;
-  currentTool = name;
-  for (const b of document.querySelectorAll(".tool")) b.classList.toggle("on", b.dataset.tool === name);
-  container.classList.toggle("hand", name === "hand");
-  const def = TOOLS[name];
-  const mode = def ? def.mode : ED.NONE;
+  markTool(name);
+  const mode = TOOLS[name]?.mode ?? ED.NONE;
   if (doc.pdf && viewer.annotationEditorMode !== mode && viewer.annotationEditorMode !== ED.DISABLE) {
     viewer.annotationEditorMode = { mode };
   }
   showToolOptions(name);
+}
+
+function markTool(name) {
+  currentTool = name;
+  for (const b of document.querySelectorAll(".tool")) b.classList.toggle("on", b.dataset.tool === name);
+  container.classList.toggle("hand", name === "hand");
 }
 
 function showToolOptions(name) {
@@ -399,7 +405,7 @@ $("btnToolDone").onclick = () => setTool("select");
 // PDF.js may leave edit mode by itself (e.g. Escape); keep our buttons in sync.
 eventBus.on("annotationeditormodechanged", ({ mode }) => {
   const name = Object.keys(TOOLS).find((k) => TOOLS[k].mode === mode) || (currentTool === "hand" ? "hand" : "select");
-  if (name !== currentTool) { currentTool = name; for (const b of document.querySelectorAll(".tool")) b.classList.toggle("on", b.dataset.tool === name); showToolOptions(name); container.classList.toggle("hand", name === "hand"); }
+  if (name !== currentTool) { markTool(name); showToolOptions(name); }
 });
 eventBus.on("editingstateschanged", ({ details }) => {
   $("btnUndo").disabled = !details.hasSomethingToUndo;
@@ -413,7 +419,7 @@ $("btnRedo").onclick = () => uiManager?.redo();
 async function addImage(file) {
   if (!doc.pdf || !file) return;
   await setTool("stamp");
-  await new Promise((r) => setTimeout(r, 80));
+  await sleep(80);
   const layer = uiManager?.currentLayer;
   if (!layer) return;
   await layer.pasteEditor({ mode: ED.STAMP }, { bitmapFile: file });
@@ -498,7 +504,7 @@ function placeSignature(url) {
 /** Adds an image as a movable object centred on (px, py) of a page, `widthPx` wide. */
 async function addImageAt(file, pageIndex, px, py, widthPx) {
   await setTool("stamp");
-  await new Promise((r) => setTimeout(r, 80));
+  await sleep(80);
   const layer = uiManager?.getLayer(pageIndex);
   if (!layer) return addImage(file);
   const before = new Set(uiManager.getEditors(pageIndex));
@@ -507,7 +513,7 @@ async function addImageAt(file, pageIndex, px, py, widthPx) {
   for (let k = 0; k < 60; k++) {
     ed = [...uiManager.getEditors(pageIndex)].find((x) => !before.has(x));
     if (ed?.div?.querySelector("canvas") && ed.width > 0) break;
-    await new Promise((r) => setTimeout(r, 50));
+    await sleep(50);
   }
   if (!ed) return;
   const [pw, ph] = ed.parentDimensions;
@@ -576,8 +582,7 @@ const thumbs = (() => {
     reset();
     const pdf = doc.pdf, my = token;
     const first = await pdf.getPage(1);
-    const rot = viewer.pagesRotation;
-    const vp = first.getViewport({ scale: 1, rotation: (first.rotate + rot) % 360 });
+    const vp = first.getViewport({ scale: 1, rotation: (first.rotate + viewer.pagesRotation) % 360 });
     const h = Math.round(WIDTH * vp.height / vp.width);
     io = new IntersectionObserver((entries) => {
       for (const e of entries) if (e.isIntersecting) { const n = +e.target.dataset.page; if (!items[n - 1].done) queue.push(n); }
@@ -605,9 +610,9 @@ const thumbs = (() => {
         item.done = true;
         const page = await doc.pdf.getPage(n);
         if (my !== token) return;
-        const vp0 = page.getViewport({ scale: 1, rotation: (page.rotate + viewer.pagesRotation) % 360 });
-        const scale = WIDTH / vp0.width, dpr = Math.min(2, devicePixelRatio || 1);
-        const vp = page.getViewport({ scale: scale * dpr, rotation: (page.rotate + viewer.pagesRotation) % 360 });
+        const rotation = (page.rotate + viewer.pagesRotation) % 360;
+        const scale = WIDTH / page.getViewport({ scale: 1, rotation }).width, dpr = Math.min(2, devicePixelRatio || 1);
+        const vp = page.getViewport({ scale: scale * dpr, rotation });
         const c = document.createElement("canvas");
         c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
         c.style.width = WIDTH + "px"; c.style.height = Math.round(vp.height / dpr) + "px";
@@ -631,7 +636,6 @@ const thumbs = (() => {
 
   return { build, reset, setActive, rerender: () => doc.pdf && build() };
 })();
-function buildThumbnails() { thumbs.build(); }
 
 async function buildOutline() {
   const box = $("outline");
@@ -690,6 +694,7 @@ async function printDocument() {
   const out = $("printContainer");
   out.replaceChildren();
   const urls = [];
+  const cleanup = () => { out.replaceChildren(); urls.forEach(URL.revokeObjectURL); };
   try {
     const printStorage = pdf.annotationStorage.print;
     for (let n = 1; n <= total; n++) {
@@ -709,10 +714,9 @@ async function printDocument() {
     }
   } catch (e) {
     toast(t("failed", { err: e?.message || e }));
-    overlay.remove(); out.replaceChildren(); urls.forEach(URL.revokeObjectURL); return;
+    overlay.remove(); cleanup(); return;
   }
   overlay.remove();
-  const cleanup = () => { out.replaceChildren(); urls.forEach(URL.revokeObjectURL); };
   addEventListener("afterprint", cleanup, { once: true });
   await platform.print();
   setTimeout(() => { if (out.childElementCount) cleanup(); }, 120_000);
@@ -768,7 +772,7 @@ async function readAloud(page = viewer.currentPageNumber) {
 function speak(text, my) {
   // speak sentence by sentence: long utterances are cut off by some engines
   const parts = text.match(/[^.!?;·\n]+[.!?;·]*\s*/g) || [text];
-  const lang = /[Ͱ-Ͽἀ-῿]/.test(text) ? "el-GR" : LANG === "el" ? "el-GR" : "en-US";
+  const lang = /[Ͱ-Ͽἀ-῿]/.test(text) || LANG === "el" ? "el-GR" : "en-US";
   const voice = speech.getVoices().find((v) => v.lang.toLowerCase().startsWith(lang.slice(0, 2)));
   return new Promise((resolve) => {
     let i = 0;
@@ -829,12 +833,11 @@ async function showProperties() {
 }
 
 function showShortcuts() {
-  const mac = /Mac/.test(navigator.platform), c = mac ? "⌘" : "Ctrl+", s = mac ? "⇧" : "Shift+";
   const rows = [
-    ["kOpen", c + "O"], ["kSave", c + "S"], ["kSaveAs", c + s + "S"], ["kPrint", c + "P"], ["kFind", c + "F"],
-    ["kSidebar", "F4"], ["kZoom", `${c}+ / ${c}−`], ["kActual", c + "1"], ["kFitPage", c + "0"], ["kFitWidth", c + "2"],
-    ["kRotate", `${c}${s}+ / ${c}${s}−`], ["kNav", "→ / ←"], ["kFirstLast", "Home / End"], ["kPresent", c + "L"],
-    ["kEdit", c + "E"], ["kClose", c + "W"], ["kSelect", "V"], ["kHand", "H"], ["kUndo", `${c}Z / ${c}Y`], ["kNight", "N"], ["kProps", c + "D"], ["kRead", c + s + "Y"], ["kHelp", "?"],
+    ["kOpen", mod + "O"], ["kSave", mod + "S"], ["kSaveAs", mod + shift + "S"], ["kPrint", mod + "P"], ["kFind", mod + "F"],
+    ["kSidebar", "F4"], ["kZoom", `${mod}+ / ${mod}−`], ["kActual", mod + "1"], ["kFitPage", mod + "0"], ["kFitWidth", mod + "2"],
+    ["kRotate", `${mod}${shift}+ / ${mod}${shift}−`], ["kNav", "→ / ←"], ["kFirstLast", "Home / End"], ["kPresent", mod + "L"],
+    ["kEdit", mod + "E"], ["kClose", mod + "W"], ["kSelect", "V"], ["kHand", "H"], ["kUndo", `${mod}Z / ${mod}Y`], ["kNight", "N"], ["kProps", mod + "D"], ["kRead", mod + shift + "Y"], ["kHelp", "?"],
   ];
   const box = document.createElement("div");
   box.className = "keys";
@@ -863,7 +866,6 @@ setNight(store.get("night", false));
 
 /* ================================================================== menu bar */
 
-const mod = /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+", shift = /Mac/.test(navigator.platform) ? "⇧" : "Shift+";
 const hasDoc = () => !!doc.pdf;
 const MENUS = {
   file: () => [
@@ -1080,10 +1082,7 @@ $("btnAllTools").onclick = () => pro.allTools();
 /** Loads new bytes for the open document (after editing), keeping page, zoom and rotation. */
 async function replaceDocumentData(bytes) {
   const keep = { page: viewer.currentPageNumber, scale: viewer.currentScaleValue, rotation: viewer.pagesRotation, name: doc.name, path: doc.path };
-  const task = pdfjsLib.getDocument({
-    data: bytes, cMapUrl: BASE + "cmaps/", cMapPacked: true, standardFontDataUrl: BASE + "standard_fonts/",
-    wasmUrl: BASE + "wasm/", iccUrl: BASE + "iccs/", isEvalSupported: false, enableXfa: true, password: doc.password,
-  });
+  const task = pdfjsLib.getDocument({ data: bytes, ...LOAD_OPTIONS, password: doc.password });
   const size = bytes.byteLength;
   const pdf = await task.promise;
   const old = doc.task;
@@ -1095,7 +1094,7 @@ async function replaceDocumentData(bytes) {
   linkService.setDocument(pdf, null);
   $("pageCount").textContent = "/ " + pdf.numPages;
   old?.destroy().catch(() => {});
-  buildThumbnails();
+  thumbs.build();
   buildOutline();
   setDirty(true);
 }
@@ -1111,7 +1110,7 @@ function busy(message) {
 
 /* ================================================================== license agreement */
 
-const EULA_VERSION = "1.0";
+const EULA_VERSION = "1.1";
 async function showLicense(requireAccept) {
   const load = (f) => fetch(new URL(`./legal/${f}`, import.meta.url)).then((r) => r.text()).catch(() => "");
   const [eula, notices] = await Promise.all([load("EULA.txt"), load("THIRD-PARTY-NOTICES.txt")]);
@@ -1125,9 +1124,9 @@ async function showLicense(requireAccept) {
   const pre = box.querySelector("pre");
   // show the Greek half first for Greek users
   const parts = eula.split(/\n-{20,}\n/);
-  pre.textContent = LANG === "el" && parts.length > 1 ? parts[1].trim() + "\n\n" + "-".repeat(60) + "\n\n" + parts[0].trim() : eula;
-  const show = (which) => { tabE.classList.toggle("on", which === "eula"); tabN.classList.toggle("on", which !== "eula"); pre.textContent = which === "eula" ? pre.dataset.eula : notices; pre.scrollTop = 0; };
-  pre.dataset.eula = pre.textContent;
+  const eulaText = LANG === "el" && parts.length > 1 ? parts[1].trim() + "\n\n" + "-".repeat(60) + "\n\n" + parts[0].trim() : eula;
+  pre.textContent = eulaText;
+  const show = (which) => { tabE.classList.toggle("on", which === "eula"); tabN.classList.toggle("on", which !== "eula"); pre.textContent = which === "eula" ? eulaText : notices; pre.scrollTop = 0; };
   tabE.onclick = () => show("eula"); tabN.onclick = () => show("notices");
   const buttons = requireAccept
     ? [{ label: t("decline"), value: "decline", kind: "secondary" }, { label: t("accept"), value: "accept", kind: "primary" }]
@@ -1148,7 +1147,6 @@ requireLicense();
 /* ================================================================== window controls (custom title bar) */
 
 if (platform.customTitleBar) {
-  document.body.classList.add("custom-titlebar");
   $("winctl").hidden = false;
   $("wcMin").onclick = () => platform.windowAction("minimize");
   $("wcMax").onclick = () => platform.windowAction("toggleMaximize");
@@ -1188,12 +1186,11 @@ addEventListener("keydown", (e) => {
     if (presentState) { present(false); return; }
     if (!$("findPanel").hidden) { closeFind(); return; }
     if (reading) { stopReading(); return; }
-    if (currentTool !== "select" && currentTool !== "hand" && !uiManager?.hasSelection) { setTool("select"); return; }
+    if (currentTool !== "select" && currentTool !== "hand" && !uiManager?.hasSelection) setTool("select");
     return;
   }
   if (typing || mod || e.altKey) return;
-  const editing = viewer.annotationEditorMode > 0 && uiManager?.hasSelection;
-  if (editing) return;
+  if (viewer.annotationEditorMode > 0 && uiManager?.hasSelection) return; // an annotation is being edited
   switch (e.key) {
     case "ArrowRight": case "PageDown": case " ":
       if (presentState || e.key === "ArrowRight") { e.preventDefault(); viewer.nextPage(); } break;
@@ -1279,8 +1276,7 @@ document.addEventListener("pointerover", (e) => {
   if (!el || e.pointerType === "touch") return;
   tipTimer = setTimeout(() => {
     if (!el.isConnected || !el.matches(":hover")) return;
-    tip.innerHTML = "";
-    tip.append(t(el.dataset.tip));
+    tip.replaceChildren(t(el.dataset.tip));
     const k = shortcut(el.dataset.tip);
     if (k) { const kb = document.createElement("kbd"); kb.textContent = k; tip.append(kb); }
     tip.hidden = false;

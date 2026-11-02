@@ -14,9 +14,8 @@ const RENDER_FLAGS = 0x01 /* annotations */ | 0x10 /* RGBA byte order */;
 const MAX_UNDO = 20;
 const BASE = new URL("./vendor/", import.meta.url).href;
 
-import { getPdfium } from "./pdfium.js";
+import { getPdfium, M, malloc, free, heap, putBytes, wstr as putString, floats, readFloats } from "./pdfium.js";
 let P = null; // wrapped PDFium module
-async function pdfium() { P = await getPdfium(); return P; }
 
 const FONT_FILES = {
   sans: { r: "FlipleafSans-Regular", b: "FlipleafSans-Bold", i: "FlipleafSans-Italic", bi: "FlipleafSans-BoldItalic" },
@@ -38,19 +37,10 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   let pending = null; // { file, widthPt } waiting for a click
   const ui = buildToolbar();
 
-  /* ---------------------------------------------------------- memory helpers */
-  const M = () => P.pdfium;
-  const malloc = (n) => M().wasmExports.malloc(n);
-  const free = (p) => p && M().wasmExports.free(p);
-  const heap = () => M().HEAPU8;
-  function putBytes(u8) { const p = malloc(u8.length); heap().set(u8, p); return p; }
-  function putString(s) { const size = (s.length + 1) * 2; const p = malloc(size); M().stringToUTF16(s, p, size); return p; }
-  function readFloats(n, fn) { const p = malloc(4 * n); try { if (!fn(p)) return null; return Array.from({ length: n }, (_, k) => M().getValue(p + 4 * k, "float")); } finally { free(p); } }
-
   /* ---------------------------------------------------------- document */
   let password = "";
   async function open(bytes) {
-    await pdfium();
+    P = await getPdfium();
     docPtr = putBytes(bytes);
     doc = P.FPDF_LoadMemDocument(docPtr, bytes.length, password);
     if (!doc) { free(docPtr); docPtr = 0; throw new Error("PDFium could not open this document (error " + P.FPDF_GetLastError() + ")"); }
@@ -197,14 +187,13 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
 
   function hexToRgb(hex) { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
 
-  async function newTextObject(page, text, style, matrix) {
+  async function newTextObject(text, style, matrix) {
     const font = await fontFor(style);
     const obj = P.FPDFPageObj_CreateTextObj(doc, font, style.size);
     const sp = putString(text);
     P.FPDFText_SetText(obj, sp);
     free(sp);
-    const mp = malloc(24);
-    matrix.forEach((v, j) => M().setValue(mp + 4 * j, v, "float"));
+    const mp = floats(...matrix);
     P.FPDFPageObj_SetMatrix(obj, mp);
     free(mp);
     const [r, g, b] = hexToRgb(style.color || "#000000");
@@ -233,7 +222,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
         if (!lines[l]) continue;
         const down = 1.2 * size * l; // one line lower, in text space
         const matrix = [m[0], m[1], m[2], m[3], m[4] - down * m[2], m[5] - down * m[3]];
-        const obj = await newTextObject(page, lines[l], style, matrix);
+        const obj = await newTextObject(lines[l], style, matrix);
         P.FPDFPage_InsertObjectAtIndex(page, obj, ++index);
       }
       removeObject(page, item.obj);
@@ -257,25 +246,33 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       if (!lines[l]) continue;
       const down = style.size * (0.85 + 1.2 * l);
       const matrix = [cos, sin, -sin, cos, x + down * sin, y - down * cos];
-      P.FPDFPage_InsertObject(page, await newTextObject(page, lines[l], style, matrix));
+      P.FPDFPage_InsertObject(page, await newTextObject(lines[l], style, matrix));
     }
     changed(i);
   }
 
-  async function addImage(i, file, center, widthPt = null) {
+  /** Decodes an image file and re-encodes it as PNG bytes. */
+  async function toPng(file) {
     const bitmap = await createImageBitmap(file);
     const c = document.createElement("canvas");
     c.width = bitmap.width; c.height = bitmap.height;
     c.getContext("2d").drawImage(bitmap, 0, 0);
-    const png = new Uint8Array(await (await new Promise((r) => c.toBlob(r, "image/png"))).arrayBuffer());
+    return { bitmap, png: new Uint8Array(await (await new Promise((r) => c.toBlob(r, "image/png"))).arrayBuffer()) };
+  }
+  function setPng(page, obj, png) {
+    const arr = malloc(4); M().setValue(arr, page, "i32");
+    const pp = putBytes(png);
+    const ok = P.EPDFImageObj_SetPng(arr, 1, obj, pp, png.length);
+    free(pp); free(arr);
+    return ok;
+  }
+
+  async function addImage(i, file, center, widthPt = null) {
+    const { bitmap, png } = await toPng(file);
     const { page } = getPage(i);
     snapshot();
     const img = P.FPDFPageObj_NewImageObj(doc);
-    const arr = malloc(4); M().setValue(arr, page, "i32");
-    const pp = putBytes(png);
-    const ok = P.EPDFImageObj_SetPng(arr, 1, img, pp, png.length);
-    free(pp); free(arr);
-    if (!ok) { P.FPDFPageObj_Destroy(img); toast(t("editImageFailed")); return; }
+    if (!setPng(page, img, png)) { P.FPDFPageObj_Destroy(img); toast(t("editImageFailed")); return; }
     const pw = P.FPDF_GetPageWidthF(page), ph = P.FPDF_GetPageHeightF(page);
     let w = widthPt || Math.min(pw * 0.4, bitmap.width * 0.75), h = w * bitmap.height / bitmap.width;
     if (h > ph * 0.5) { h = ph * 0.5; w = h * bitmap.width / bitmap.height; }
@@ -287,17 +284,10 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   }
 
   async function replaceImage(i, item, file) {
-    const bitmap = await createImageBitmap(file);
-    const c = document.createElement("canvas");
-    c.width = bitmap.width; c.height = bitmap.height;
-    c.getContext("2d").drawImage(bitmap, 0, 0);
-    const png = new Uint8Array(await (await new Promise((r) => c.toBlob(r, "image/png"))).arrayBuffer());
+    const { png } = await toPng(file);
     const { page } = getPage(i);
     snapshot();
-    const arr = malloc(4); M().setValue(arr, page, "i32");
-    const pp = putBytes(png);
-    P.EPDFImageObj_SetPng(arr, 1, item.obj, pp, png.length);
-    free(pp); free(arr);
+    setPng(page, item.obj, png);
     changed(i);
   }
 
@@ -540,7 +530,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       try {
         if (fileTarget === "replace") { const it = selectedItem(); if (it) await replaceImage(selected.page, it, f); }
         else { pending = { file: f, widthPt: null }; setMode("placeImage"); }
-      } catch (e) { toast(t("editImageFailed")); }
+      } catch { toast(t("editImageFailed")); }
     };
     els.addSig.onclick = async () => {
       const file = await pickSignature?.();
@@ -579,8 +569,9 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     if (it?.type !== FPDF_PAGEOBJ_TEXT) return;
     const style = defaultStyle();
     style.size = style.size / it.scale; // size in text space
-    await setText(selected.page, it, it.text, style);
-    selectNewest(selected.page, FPDF_PAGEOBJ_TEXT);
+    const page = selected.page; // setText clears the selection
+    await setText(page, it, it.text, style);
+    selectNewest(page, FPDF_PAGEOBJ_TEXT);
   }
 
   function deleteSelected() {

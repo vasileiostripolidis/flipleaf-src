@@ -5,13 +5,14 @@
 //
 // To make Pro paid later:
 //   1. set LAUNCH_FREE = false;
-//   2. implement activate(key) (e.g. verify a signed license key offline, or call a licensing API);
+//   2. add activation (e.g. verify a signed license key offline, or call a licensing API) that stores
+//      { valid: true } under STORE_KEY;
 //   3. hasPro() then returns true only for activated installations.
 // Nothing else in the app needs to change.
 
-export const LAUNCH_FREE = true;
+const LAUNCH_FREE = true;
 
-export const PRO_FEATURES = [
+const PRO_FEATURES = [
   // Edit & organize
   "organize", "combine", "split", "extract", "insertPages", "crop", "headerFooter", "watermark", "bates",
   // Convert
@@ -39,10 +40,4 @@ export function plan() {
 export function hasPro(feature) {
   if (!PRO_FEATURES.includes(feature)) return true;
   return plan() !== "free";
-}
-
-/** Placeholder for future paid activation. Returns true when the key is accepted. */
-export async function activate(key) {
-  // Intentionally not implemented while Flipleaf Pro is free.
-  return false;
 }
