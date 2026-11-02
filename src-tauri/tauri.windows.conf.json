@@ -1,0 +1,17 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Flipleaf",
+        "width": 1240,
+        "height": 860,
+        "minWidth": 560,
+        "minHeight": 360,
+        "dragDropEnabled": false,
+        "decorations": false,
+        "shadow": true
+      }
+    ]
+  }
+}

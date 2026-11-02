@@ -3,6 +3,10 @@
 
 const T = window.__TAURI__;
 export const isDesktop = !!T;
+const ua = navigator.userAgent;
+export const os = /Windows/.test(ua) ? "windows" : /Macintosh|Mac OS X/.test(ua) ? "mac" : "linux";
+/** Windows uses our own title bar (menus + window buttons); macOS keeps its traffic lights; Linux keeps the system frame. */
+export const customTitleBar = isDesktop && os === "windows";
 
 const invoke = (cmd, args, opts) => T.core.invoke(cmd, args, opts);
 const baseName = (p) => p.split(/[\\/]/).pop();
@@ -110,4 +114,22 @@ export function openExternal(url) {
 export function print() {
   if (isDesktop) return invoke("print_window").catch(() => window.print());
   window.print();
+}
+
+/* ---------------------------------------------------------------- custom title bar */
+
+export function windowAction(action) {
+  if (!isDesktop) return;
+  const win = T.window.getCurrentWindow();
+  ({ minimize: () => win.minimize(), toggleMaximize: () => win.toggleMaximize(), close: () => win.close() })[action]?.().catch?.(() => {});
+}
+export function onMaximizedChange(cb) {
+  if (!isDesktop) return;
+  const win = T.window.getCurrentWindow();
+  const check = () => win.isMaximized().then(cb).catch(() => {});
+  win.onResized(check);
+  check();
+}
+export function quit() {
+  if (isDesktop) T.window.getCurrentWindow().close().catch(() => {});
 }

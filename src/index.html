@@ -14,23 +14,34 @@
 </head>
 <body class="no-doc">
 
-<!-- ================= App bar ================= -->
-<header class="appbar">
-  <div class="brand">
-    <svg viewBox="0 0 64 64" width="22" height="22" aria-hidden="true"><use href="icon.svg#leaf"/></svg>
-    <span>Flipleaf</span>
+<!-- ================= Title / menu bar ================= -->
+<header class="appbar" id="appbar" data-tauri-drag-region>
+  <div class="brand" data-tauri-drag-region>
+    <svg viewBox="0 0 64 64" width="20" height="20" aria-hidden="true"><use href="icon.svg#leaf"/></svg>
   </div>
-  <div class="doc-title"><span id="docTitle"></span><span id="dirtyDot" class="dirty" hidden title=""></span></div>
-  <div class="appbar-actions">
-    <button class="btn ghost" id="btnOpen" data-tip="open"><i data-icon="folder-open"></i><span data-i18n="openShort"></span></button>
-    <button class="btn ghost doc-only" id="btnSave" data-tip="save"><i data-icon="save"></i><span data-i18n="saveShort"></span></button>
-    <button class="btn ghost doc-only" id="btnPrint" data-tip="print"><i data-icon="printer"></i><span data-i18n="printShort"></span></button>
-    <button class="btn icon" id="btnMore" data-tip="more" aria-haspopup="menu"><i data-icon="ellipsis-vertical"></i></button>
+  <nav class="menubar" id="menubar" role="menubar">
+    <button role="menuitem" data-menu="file" data-i18n="mFile"></button>
+    <button role="menuitem" data-menu="edit" data-i18n="mEdit"></button>
+    <button role="menuitem" data-menu="view" data-i18n="mView"></button>
+    <button role="menuitem" data-menu="tools" data-i18n="mTools"></button>
+    <button role="menuitem" data-menu="help" data-i18n="mHelp"></button>
+  </nav>
+  <div class="doc-title" data-tauri-drag-region><span id="docTitle" data-tauri-drag-region>Flipleaf</span><span id="dirtyDot" class="dirty" hidden></span></div>
+  <div class="winctl" id="winctl" hidden>
+    <button id="wcMin" aria-label="Minimize"><i data-icon="minus" data-size="16"></i></button>
+    <button id="wcMax" aria-label="Maximize"><i data-icon="square" data-size="13"></i></button>
+    <button id="wcClose" class="close" aria-label="Close"><i data-icon="x" data-size="17"></i></button>
   </div>
 </header>
 
 <!-- ================= Tool bar ================= -->
 <div class="toolbar doc-only">
+  <div class="tgroup">
+    <button class="btn icon" id="btnOpen" data-tip="open"><i data-icon="folder-open"></i></button>
+    <button class="btn icon" id="btnSave" data-tip="save"><i data-icon="save"></i></button>
+    <button class="btn icon" id="btnPrint" data-tip="print"><i data-icon="printer"></i></button>
+  </div>
+  <div class="sep"></div>
   <div class="tgroup">
     <button class="btn icon" id="btnSidebar" data-tip="sidebar"><i data-icon="panel-left"></i></button>
   </div>
@@ -38,6 +49,8 @@
   <div class="tgroup" role="radiogroup" id="toolGroup">
     <button class="btn icon tool on" data-tool="select" data-tip="toolSelect"><i data-icon="mouse-pointer-2"></i></button>
     <button class="btn icon tool" data-tool="hand" data-tip="toolHand"><i data-icon="hand"></i></button>
+    <div class="sep"></div>
+    <button class="btn accent" id="btnEditPdf" data-tip="editPdf"><i data-icon="file-pen-line"></i><span data-i18n="editShort"></span></button>
     <div class="sep"></div>
     <button class="btn icon tool" data-tool="highlight" data-tip="toolHighlight"><i data-icon="highlighter"></i></button>
     <button class="btn icon tool" data-tool="ink" data-tip="toolDraw"><i data-icon="pen-line"></i></button>
@@ -77,6 +90,9 @@
     <button class="btn icon" id="btnFind" data-tip="find"><i data-icon="search"></i></button>
   </div>
 </div>
+
+<!-- edit-PDF options (shown while editing text & images) -->
+<div class="tooloptions editbar" id="editBar" hidden></div>
 
 <!-- tool options (shown while an annotation tool is active) -->
 <div class="tooloptions" id="toolOptions" hidden>
@@ -143,26 +159,8 @@
 </main>
 
 <!-- ================= Menus & dialogs ================= -->
-<div class="menu" id="moreMenu" role="menu" hidden>
-  <button role="menuitem" data-act="saveAs" class="doc-only"><i data-icon="download"></i><span data-i18n="saveAs"></span><kbd>Ctrl+Shift+S</kbd></button>
-  <hr class="doc-only">
-  <button role="menuitem" data-act="rotateCw" class="doc-only"><i data-icon="rotate-cw"></i><span data-i18n="rotateCw"></span><kbd>Ctrl+Shift++</kbd></button>
-  <button role="menuitem" data-act="rotateCcw" class="doc-only"><i data-icon="rotate-ccw"></i><span data-i18n="rotateCcw"></span><kbd>Ctrl+Shift+−</kbd></button>
-  <hr class="doc-only">
-  <div class="menu-label doc-only" data-i18n="pageDisplay"></div>
-  <button role="menuitemradio" data-act="layout" data-v="single" class="doc-only"><i data-icon="file"></i><span data-i18n="singlePage"></span></button>
-  <button role="menuitemradio" data-act="layout" data-v="scroll" class="doc-only"><i data-icon="gallery-vertical-end"></i><span data-i18n="continuous"></span></button>
-  <button role="menuitemradio" data-act="layout" data-v="two" class="doc-only"><i data-icon="book-open"></i><span data-i18n="twoPage"></span></button>
-  <button role="menuitemradio" data-act="layout" data-v="twoScroll" class="doc-only"><i data-icon="columns-2"></i><span data-i18n="twoPageScroll"></span></button>
-  <hr class="doc-only">
-  <button role="menuitem" data-act="present" class="doc-only"><i data-icon="presentation"></i><span data-i18n="presentation"></span><kbd>Ctrl+L</kbd></button>
-  <button role="menuitem" data-act="readAloud" class="doc-only" id="miRead"><i data-icon="volume-2"></i><span data-i18n="readAloud"></span><kbd>Ctrl+Shift+Y</kbd></button>
-  <button role="menuitemcheckbox" data-act="night"><i data-icon="moon"></i><span data-i18n="nightMode"></span><kbd>N</kbd></button>
-  <hr>
-  <button role="menuitem" data-act="properties" class="doc-only"><i data-icon="info"></i><span data-i18n="properties"></span><kbd>Ctrl+D</kbd></button>
-  <button role="menuitem" data-act="shortcuts"><i data-icon="keyboard"></i><span data-i18n="shortcuts"></span><kbd>?</kbd></button>
-  <button role="menuitem" data-act="about"><i data-icon="circle-help"></i><span data-i18n="about"></span></button>
-</div>
+<div class="menu" id="menuPopup" role="menu" hidden></div>
+<div class="menu sub" id="subPopup" role="menu" hidden></div>
 
 <div class="readbar" id="readBar" hidden>
   <i data-icon="volume-2" data-size="16"></i><span data-i18n="reading"></span>

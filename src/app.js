@@ -4,13 +4,14 @@ import * as pdfjsLib from "./vendor/pdfjs/pdf.min.mjs";
 import { hydrateIcons, icon } from "./icons.js";
 import { t, shortcut, translateDom, LANG } from "./i18n.js";
 import * as platform from "./platform.js";
+import { createEditor } from "./editor.js";
 
 globalThis.pdfjsLib = pdfjsLib; // the viewer components expect it here
 const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, SpreadMode, LinkTarget } =
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 
@@ -50,12 +51,14 @@ eventBus.on("annotationeditoruimanager", ({ uiManager: m }) => (uiManager = m));
 
 /* ================================================================== document state */
 
-const doc = { pdf: null, task: null, name: "", path: null, size: 0, dirty: false, key: "" };
+const doc = { pdf: null, task: null, name: "", path: null, size: 0, dirty: false, key: "", password: undefined };
 
 async function openData({ name, data, path }) {
   if (!(await confirmDiscard())) return;
   const size = data.byteLength; // PDF.js takes ownership of `data`
+  if (editor.active) await editor.exit(false);
   await closeDocument();
+  doc.password = undefined;
   const loadingTask = pdfjsLib.getDocument({
     data,
     cMapUrl: BASE + "cmaps/",
@@ -69,7 +72,7 @@ async function openData({ name, data, path }) {
   doc.task = loadingTask;
   loadingTask.onPassword = async (update, reason) => {
     const pw = await askPassword(name, reason === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD);
-    if (pw === null) loadingTask.destroy(); else update(pw);
+    if (pw === null) loadingTask.destroy(); else { doc.password = pw; update(pw); }
   };
   let pdf;
   try {
@@ -84,7 +87,6 @@ async function openData({ name, data, path }) {
 
   Object.assign(doc, { pdf, name, path, size, dirty: false, key: pdf.fingerprints[0] });
   pdf.annotationStorage.onSetModified = () => setDirty(true);
-  pdf.annotationStorage.onResetModified = () => setDirty(false);
 
   viewer.setDocument(pdf);
   linkService.setDocument(pdf, null);
@@ -201,6 +203,7 @@ function suggestedName() {
 
 async function save({ as = false } = {}) {
   if (!doc.pdf) return false;
+  if (editor.active) await editor.exit(true);
   try {
     const bytes = await documentBytes();
     let where;
@@ -288,11 +291,12 @@ const LAYOUTS = {
   two: [ScrollMode.PAGE, SpreadMode.ODD],
   twoScroll: [ScrollMode.VERTICAL, SpreadMode.ODD],
 };
+let currentLayout = "scroll";
 function applyLayout(name, persist = true) {
   const [scroll, spread] = LAYOUTS[name] || LAYOUTS.scroll;
   viewer.scrollMode = scroll;
   viewer.spreadMode = spread;
-  for (const b of document.querySelectorAll('[data-act="layout"]')) b.setAttribute("aria-checked", b.dataset.v === name);
+  currentLayout = name;
   if (persist) store.set("layout", name);
 }
 
@@ -697,6 +701,7 @@ toggleSidebar(store.get("sidebar", innerWidth > 900));
 
 async function printDocument() {
   if (!doc.pdf) return;
+  if (editor.active) await editor.exit(true);
   const pdf = doc.pdf, total = pdf.numPages;
   const overlay = document.createElement("div");
   overlay.className = "progress";
@@ -764,7 +769,6 @@ container.addEventListener("click", (e) => {
 
 const speech = "speechSynthesis" in window ? window.speechSynthesis : null;
 let reading = null;
-if (!speech) $("miRead").hidden = true;
 
 async function readAloud(page = viewer.currentPageNumber) {
   if (!speech || !doc.pdf) { toast(t("noSpeech")); return; }
@@ -850,7 +854,7 @@ function showShortcuts() {
     ["kOpen", c + "O"], ["kSave", c + "S"], ["kSaveAs", c + s + "S"], ["kPrint", c + "P"], ["kFind", c + "F"],
     ["kSidebar", "F4"], ["kZoom", `${c}+ / ${c}−`], ["kActual", c + "1"], ["kFitPage", c + "0"], ["kFitWidth", c + "2"],
     ["kRotate", `${c}${s}+ / ${c}${s}−`], ["kNav", "→ / ←"], ["kFirstLast", "Home / End"], ["kPresent", c + "L"],
-    ["kSelect", "V"], ["kHand", "H"], ["kUndo", `${c}Z / ${c}Y`], ["kNight", "N"], ["kProps", c + "D"], ["kRead", c + s + "Y"], ["kHelp", "?"],
+    ["kEdit", c + "E"], ["kClose", c + "W"], ["kSelect", "V"], ["kHand", "H"], ["kUndo", `${c}Z / ${c}Y`], ["kNight", "N"], ["kProps", c + "D"], ["kRead", c + s + "Y"], ["kHelp", "?"],
   ];
   const box = document.createElement("div");
   box.className = "keys";
@@ -865,7 +869,7 @@ function showShortcuts() {
 function showAbout() {
   const p = document.createElement("p");
   p.style.whiteSpace = "pre-line"; p.style.margin = "0";
-  p.textContent = t("aboutBody", { v: VERSION });
+  p.textContent = t("aboutBody", { v: VERSION }) + "\n\n© 2026 Vasileios Tripolidis. Flipleaf is open-source software (MIT License).";
   dialog({ title: t("about"), body: p, buttons: [{ label: t("ok"), value: "ok", kind: "primary" }] });
 }
 
@@ -873,45 +877,280 @@ function showAbout() {
 
 function setNight(on) {
   document.body.classList.toggle("night", on);
-  document.querySelector('[data-act="night"]').setAttribute("aria-checked", on);
   store.set("night", on);
 }
 setNight(store.get("night", false));
 
-/* ================================================================== "more" menu */
+/* ================================================================== menu bar */
 
-const menu = $("moreMenu");
-function openMenu() {
-  const r = $("btnMore").getBoundingClientRect();
-  menu.hidden = false;
-  menu.style.top = r.bottom + 6 + "px";
-  menu.style.left = Math.max(8, r.right - menu.offsetWidth) + "px";
-  menu.querySelector("button:not([hidden])")?.focus();
+const mod = /Mac/.test(navigator.platform) ? "⌘" : "Ctrl+", shift = /Mac/.test(navigator.platform) ? "⇧" : "Shift+";
+const hasDoc = () => !!doc.pdf;
+const MENUS = {
+  file: () => [
+    { label: "openFile2", key: mod + "O", icon: "folder-open", run: openPicker },
+    { label: "openRecent", icon: "clock", sub: recentMenu, when: () => platform.isDesktop },
+    "-",
+    { label: "save", key: mod + "S", icon: "save", run: () => save(), when: hasDoc },
+    { label: "saveAs", key: mod + shift + "S", icon: "download", run: () => save({ as: true }), when: hasDoc },
+    "-",
+    { label: "print", key: mod + "P", icon: "printer", run: printDocument, when: hasDoc },
+    "-",
+    { label: "properties", key: mod + "D", icon: "info", run: showProperties, when: hasDoc },
+    "-",
+    { label: "closeDoc", key: mod + "W", icon: "x", run: closeFile, when: hasDoc },
+    { label: "exit", key: platform.os === "mac" ? "⌘Q" : "Alt+F4", icon: "log-out", run: () => platform.quit(), when: () => platform.isDesktop },
+  ],
+  edit: () => [
+    { label: "undo", key: mod + "Z", icon: "undo-2", run: () => uiManager?.undo(), when: () => hasDoc() && !$("btnUndo").disabled },
+    { label: "redo", key: mod + "Y", icon: "redo-2", run: () => uiManager?.redo(), when: () => hasDoc() && !$("btnRedo").disabled },
+    "-",
+    { label: "copy", key: mod + "C", icon: "copy", run: () => document.execCommand("copy"), when: () => !!getSelection()?.toString() },
+    { label: "find", key: mod + "F", icon: "search", run: openFind, when: hasDoc },
+    "-",
+    { label: "editPdf", key: mod + "E", icon: "file-pen-line", run: () => toggleEditPdf(true), when: hasDoc },
+    { label: "editAddText", icon: "text-cursor-input", run: () => toggleEditPdf(true).then(() => editor.addTextMode()), when: hasDoc },
+    { label: "editAddImage", icon: "image-plus", run: () => toggleEditPdf(true).then(() => editor.addImageDialog()), when: hasDoc },
+  ],
+  view: () => [
+    { label: "zoomIn", key: mod + "+", icon: "zoom-in", run: () => viewer.increaseScale(), when: hasDoc },
+    { label: "zoomOut", key: mod + "−", icon: "zoom-out", run: () => viewer.decreaseScale(), when: hasDoc },
+    { label: "zActual", key: mod + "1", run: () => (viewer.currentScaleValue = "page-actual"), when: hasDoc },
+    { label: "zFit", key: mod + "0", run: () => (viewer.currentScaleValue = "page-fit"), when: hasDoc },
+    { label: "zWidth", key: mod + "2", run: () => (viewer.currentScaleValue = "page-width"), when: hasDoc },
+    "-",
+    { label: "rotateCw", key: mod + shift + "+", icon: "rotate-cw", run: () => rotate(90), when: hasDoc },
+    { label: "rotateCcw", key: mod + shift + "−", icon: "rotate-ccw", run: () => rotate(-90), when: hasDoc },
+    "-",
+    { label: "pageDisplay", icon: "book-open", when: hasDoc, sub: () => [
+      { label: "singlePage", icon: "file", check: currentLayout === "single", run: () => applyLayout("single") },
+      { label: "continuous", icon: "gallery-vertical-end", check: currentLayout === "scroll", run: () => applyLayout("scroll") },
+      { label: "twoPage", icon: "book-open", check: currentLayout === "two", run: () => applyLayout("two") },
+      { label: "twoPageScroll", icon: "columns-2", check: currentLayout === "twoScroll", run: () => applyLayout("twoScroll") },
+    ] },
+    { label: "showSidebar", key: "F4", icon: "panel-left", check: !$("sidebar").hidden, run: () => toggleSidebar(), when: hasDoc },
+    "-",
+    { label: "presentation", key: mod + "L", icon: "presentation", run: () => present(true), when: hasDoc },
+    { label: "nightMode", key: "N", icon: "moon", check: document.body.classList.contains("night"), run: () => setNight(!document.body.classList.contains("night")) },
+    { label: "readAloud", key: mod + shift + "Y", icon: "volume-2", run: () => readAloud(), when: () => hasDoc() && !!speech },
+  ],
+  tools: () => [
+    { label: "editPdf", key: mod + "E", icon: "file-pen-line", run: () => toggleEditPdf(true), when: hasDoc },
+    "-",
+    { label: "toolHighlight", icon: "highlighter", run: () => setTool("highlight"), when: hasDoc },
+    { label: "toolDraw", icon: "pen-line", run: () => setTool("ink"), when: hasDoc },
+    { label: "toolText", icon: "type", run: () => setTool("freetext"), when: hasDoc },
+    { label: "toolImage", icon: "image-plus", run: () => $("imageInput").click(), when: hasDoc },
+    { label: "toolSign", icon: "signature", run: signDialog, when: hasDoc },
+    "-",
+    { label: "toolSelect", key: "V", icon: "mouse-pointer-2", run: () => setTool("select"), when: hasDoc },
+    { label: "toolHand", key: "H", icon: "hand", run: () => setTool("hand"), when: hasDoc },
+  ],
+  help: () => [
+    { label: "shortcuts", key: "?", icon: "keyboard", run: showShortcuts },
+    { label: "licenses", icon: "scale", run: () => showLicense(false) },
+    "-",
+    { label: "about", icon: "circle-help", run: showAbout },
+  ],
+};
+
+async function recentMenu() {
+  const list = await platform.recentFiles();
+  if (!list.length) return [{ label: "noRecent", disabled: true }];
+  return list.slice(0, 10).map(({ path, name }) => ({ text: name, title: path, icon: "file-text", run: () => openPath(path) }));
 }
-const closeMenu = () => (menu.hidden = true);
-$("btnMore").onclick = (e) => { e.stopPropagation(); menu.hidden ? openMenu() : closeMenu(); };
-addEventListener("pointerdown", (e) => { if (!menu.hidden && !menu.contains(e.target) && !$("btnMore").contains(e.target)) closeMenu(); });
-menu.addEventListener("click", (e) => {
-  const b = e.target.closest("button[data-act]");
-  if (!b) return;
-  closeMenu();
-  ({
-    saveAs: () => save({ as: true }),
-    rotateCw: () => rotate(90), rotateCcw: () => rotate(-90),
-    layout: () => applyLayout(b.dataset.v),
-    present: () => present(true),
-    readAloud: () => readAloud(),
-    night: () => setNight(!document.body.classList.contains("night")),
-    properties: showProperties, shortcuts: showShortcuts, about: showAbout,
-  })[b.dataset.act]?.();
+
+const popup = $("menuPopup"), subPopup = $("subPopup");
+let openMenuName = null;
+
+async function fillMenu(el, items) {
+  el.replaceChildren();
+  for (const it of items) {
+    if (it === "-") { if (el.lastElementChild && el.lastElementChild.tagName !== "HR") el.append(document.createElement("hr")); continue; }
+    const b = document.createElement("button");
+    b.setAttribute("role", it.check !== undefined ? "menuitemcheckbox" : "menuitem");
+    if (it.check !== undefined) b.setAttribute("aria-checked", !!it.check);
+    const enabled = !it.disabled && (it.when ? it.when() : true);
+    b.disabled = !enabled;
+    b.innerHTML = `${it.check ? icon("check", 16) : it.icon ? icon(it.icon, 16) : '<span class="ic-blank"></span>'}<span></span>${it.sub ? icon("chevron-right", 14) : `<kbd>${it.key || ""}</kbd>`}`;
+    b.querySelector("span:not(.ic-blank)").textContent = it.text || t(it.label);
+    if (it.title) b.title = it.title;
+    if (it.sub) {
+      b.classList.add("has-sub");
+      const show = async () => {
+        if (b.disabled) return;
+        await fillMenu(subPopup, await it.sub());
+        const r = b.getBoundingClientRect();
+        subPopup.hidden = false;
+        subPopup.style.top = r.top - 6 + "px";
+        subPopup.style.left = (r.right + subPopup.offsetWidth + 4 > innerWidth ? r.left - subPopup.offsetWidth - 4 : r.right + 4) + "px";
+      };
+      b.addEventListener("pointerenter", show);
+      b.addEventListener("click", (e) => { e.stopPropagation(); show(); });
+    } else {
+      b.addEventListener("pointerenter", () => { if (el === popup) subPopup.hidden = true; });
+      b.addEventListener("click", () => { closeMenus(); it.run?.(); });
+    }
+    el.append(b);
+  }
+  if (el.lastElementChild?.tagName === "HR") el.lastElementChild.remove();
+}
+
+async function openMenu(name) {
+  const btn = document.querySelector(`[data-menu="${name}"]`);
+  openMenuName = name;
+  for (const b of document.querySelectorAll("[data-menu]")) b.classList.toggle("open", b === btn);
+  subPopup.hidden = true;
+  await fillMenu(popup, MENUS[name]());
+  const r = btn.getBoundingClientRect();
+  popup.hidden = false;
+  popup.style.top = r.bottom + 4 + "px";
+  popup.style.left = Math.min(r.left, innerWidth - popup.offsetWidth - 8) + "px";
+}
+function closeMenus() {
+  openMenuName = null;
+  popup.hidden = subPopup.hidden = true;
+  for (const b of document.querySelectorAll("[data-menu]")) b.classList.remove("open");
+}
+for (const b of document.querySelectorAll("[data-menu]")) {
+  b.addEventListener("click", (e) => { e.stopPropagation(); openMenuName === b.dataset.menu ? closeMenus() : openMenu(b.dataset.menu); });
+  b.addEventListener("pointerenter", () => { if (openMenuName && openMenuName !== b.dataset.menu) openMenu(b.dataset.menu); });
+}
+addEventListener("pointerdown", (e) => {
+  if (openMenuName && !popup.contains(e.target) && !subPopup.contains(e.target) && !e.target.closest("[data-menu]")) closeMenus();
 });
-menu.addEventListener("keydown", (e) => {
-  const items = [...menu.querySelectorAll("button")].filter((b) => b.offsetParent);
+addEventListener("blur", closeMenus);
+addEventListener("keydown", (e) => { if (e.key === "Escape" && openMenuName) { e.preventDefault(); e.stopPropagation(); closeMenus(); } }, true);
+for (const el of [popup, subPopup]) el.addEventListener("keydown", (e) => {
+  const items = [...el.querySelectorAll("button:not(:disabled)")];
   const i = items.indexOf(document.activeElement);
   if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
   else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
-  else if (e.key === "Escape") { closeMenu(); $("btnMore").focus(); }
+  else if (e.key === "Escape") { e.preventDefault(); closeMenus(); }
+  else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    const names = Object.keys(MENUS), k = names.indexOf(openMenuName);
+    e.preventDefault(); openMenu(names[(k + (e.key === "ArrowRight" ? 1 : names.length - 1)) % names.length]).then(() => popup.querySelector("button:not(:disabled)")?.focus());
+  }
 });
+// Alt opens the File menu, like desktop apps
+let altAlone = false;
+addEventListener("keydown", (e) => { altAlone = e.key === "Alt"; }, true);
+addEventListener("keyup", (e) => {
+  if (e.key === "Alt" && altAlone && !$("dlg").open) { e.preventDefault(); openMenu("file").then(() => popup.querySelector("button:not(:disabled)")?.focus()); }
+  altAlone = false;
+});
+
+async function closeFile() {
+  if (!(await confirmDiscard())) return;
+  if (editor.active) await editor.exit(false);
+  await closeDocument();
+  document.body.classList.add("no-doc");
+  $("home").hidden = false;
+  $("docTitle").textContent = "Flipleaf";
+  setDirty(false);
+  refreshRecent();
+}
+
+/* ================================================================== edit text & images (PDFium) */
+
+const editor = createEditor({
+  viewer, eventBus, t, toast, icon,
+  onChange: () => setDirty(true),
+  onApply: (bytes) => replaceDocumentData(bytes),
+});
+async function toggleEditPdf(on = !editor.active) {
+  if (!doc.pdf) return;
+  if (!on) return editor.exit(true);
+  if (editor.active) return;
+  await setTool("select");
+  closeFind();
+  const overlay = busy(t("editLoading"));
+  try {
+    const bytes = await documentBytes();
+    await editor.enter(bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes));
+  } catch (e) {
+    toast(t("failed", { err: e?.message || e }), 6000);
+  } finally { overlay.remove(); }
+}
+$("btnEditPdf").onclick = () => toggleEditPdf();
+
+/** Loads new bytes for the open document (after editing), keeping page, zoom and rotation. */
+async function replaceDocumentData(bytes) {
+  const keep = { page: viewer.currentPageNumber, scale: viewer.currentScaleValue, rotation: viewer.pagesRotation, name: doc.name, path: doc.path };
+  const task = pdfjsLib.getDocument({
+    data: bytes, cMapUrl: BASE + "cmaps/", cMapPacked: true, standardFontDataUrl: BASE + "standard_fonts/",
+    wasmUrl: BASE + "wasm/", iccUrl: BASE + "iccs/", isEvalSupported: false, enableXfa: true, password: doc.password,
+  });
+  const size = bytes.byteLength;
+  const pdf = await task.promise;
+  const old = doc.task;
+  doc.task = task;
+  Object.assign(doc, { pdf, size, key: pdf.fingerprints[0] });
+  pdf.annotationStorage.onSetModified = () => setDirty(true);
+  store.set("view." + doc.key, { page: keep.page, scale: keep.scale, rotation: keep.rotation });
+  viewer.setDocument(pdf);
+  linkService.setDocument(pdf, null);
+  old?.destroy().catch(() => {});
+  buildThumbnails();
+  buildOutline();
+  setDirty(true);
+}
+
+function busy(message) {
+  const o = document.createElement("div");
+  o.className = "progress";
+  o.innerHTML = `<div><b></b><progress></progress></div>`;
+  o.querySelector("b").textContent = message;
+  document.body.append(o);
+  return o;
+}
+
+/* ================================================================== license agreement */
+
+const EULA_VERSION = "1.0";
+async function showLicense(requireAccept) {
+  const load = (f) => fetch(new URL(`./legal/${f}`, import.meta.url)).then((r) => r.text()).catch(() => "");
+  const [eula, notices] = await Promise.all([load("EULA.txt"), load("THIRD-PARTY-NOTICES.txt")]);
+  const box = document.createElement("div");
+  box.innerHTML = `<p class="muted small" style="margin:0 0 10px"></p>
+    <div class="tabs"><button type="button" class="on" data-tab="eula"></button><button type="button" data-tab="notices"></button></div>
+    <pre class="legal"></pre>`;
+  box.querySelector("p").textContent = requireAccept ? t("licenseIntro") : `Flipleaf ${VERSION} · © 2026 Vasileios Tripolidis · MIT License`;
+  const [tabE, tabN] = box.querySelectorAll("[data-tab]");
+  tabE.textContent = t("licenseTitle"); tabN.textContent = "Third-party notices";
+  const pre = box.querySelector("pre");
+  // show the Greek half first for Greek users
+  const parts = eula.split(/\n-{20,}\n/);
+  pre.textContent = LANG === "el" && parts.length > 1 ? parts[1].trim() + "\n\n" + "-".repeat(60) + "\n\n" + parts[0].trim() : eula;
+  const show = (which) => { tabE.classList.toggle("on", which === "eula"); tabN.classList.toggle("on", which !== "eula"); pre.textContent = which === "eula" ? pre.dataset.eula : notices; pre.scrollTop = 0; };
+  pre.dataset.eula = pre.textContent;
+  tabE.onclick = () => show("eula"); tabN.onclick = () => show("notices");
+  const buttons = requireAccept
+    ? [{ label: t("decline"), value: "decline", kind: "secondary" }, { label: t("accept"), value: "accept", kind: "primary" }]
+    : [{ label: t("ok"), value: "ok", kind: "primary" }];
+  $("dlg").classList.add("wide");
+  const r = await dialog({ title: t("licenseTitle"), body: box, buttons });
+  $("dlg").classList.remove("wide");
+  return r;
+}
+async function requireLicense() {
+  if (!platform.isDesktop || store.get("eula", null) === EULA_VERSION) return;
+  const r = await showLicense(true);
+  if (r === "accept") store.set("eula", EULA_VERSION);
+  else platform.quit();
+}
+requireLicense();
+
+/* ================================================================== window controls (custom title bar) */
+
+if (platform.customTitleBar) {
+  document.body.classList.add("custom-titlebar");
+  $("winctl").hidden = false;
+  $("wcMin").onclick = () => platform.windowAction("minimize");
+  $("wcMax").onclick = () => platform.windowAction("toggleMaximize");
+  $("wcClose").onclick = () => platform.windowAction("close");
+  platform.onMaximizedChange((max) => { $("wcMax").innerHTML = icon(max ? "copy" : "square", 13); $("wcMax").setAttribute("aria-label", max ? "Restore" : "Maximize"); });
+}
+if (platform.os === "mac" && platform.isDesktop) document.body.classList.add("mac-titlebar");
 
 /* ================================================================== keyboard */
 
@@ -921,12 +1160,16 @@ addEventListener("keydown", (e) => {
   if ($("dlg").open) return;
 
   if (mod && key === "o") { e.preventDefault(); openPicker(); return; }
+  if (editor.active) { if (mod && key === "s") { e.preventDefault(); editor.exit(true).then(() => save({ as: e.shiftKey })); } return; }
   if (!doc.pdf) return;
   if (mod && key === "s") { e.preventDefault(); save({ as: e.shiftKey }); return; }
   if (mod && key === "p") { e.preventDefault(); printDocument(); return; }
   if (mod && key === "f") { e.preventDefault(); openFind(); return; }
   if (mod && key === "l") { e.preventDefault(); present(); return; }
   if (mod && key === "d") { e.preventDefault(); showProperties(); return; }
+  if (mod && key === "e") { e.preventDefault(); toggleEditPdf(true); return; }
+  if (mod && key === "w") { e.preventDefault(); closeFile(); return; }
+  if (mod && key === "q" && platform.isDesktop) { e.preventDefault(); platform.quit(); return; }
   if (mod && e.shiftKey && key === "y") { e.preventDefault(); reading ? stopReading() : readAloud(); return; }
   if (mod && e.shiftKey && (e.key === "+" || e.key === "=")) { e.preventDefault(); rotate(90); return; }
   if (mod && e.shiftKey && (e.key === "-" || e.key === "_")) { e.preventDefault(); rotate(-90); return; }

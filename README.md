@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">Flipleaf</h1>
-<p align="center"><b>A feather-light, private PDF reader for Windows, macOS and Linux.</b><br>
+<p align="center"><b>A feather-light, private PDF reader and editor for Windows, macOS and Linux.</b><br>
 ~4 MB installer · opens instantly · your files never leave your computer</p>
 
 <p align="center">
@@ -43,6 +43,12 @@ Then right-click any PDF → **Open with → Flipleaf** (you can make it the def
 - Search with highlight-all, match case, whole words and accent-insensitive matching (`cafe` finds `Café`, `φυλλο` finds `ΦΎΛΛΟ`)
 - Remembers the last page, zoom and rotation of every document
 
+**Edit PDF** (Ctrl+E)
+- Retype existing text, change its font, size, style and color
+- Move, resize, replace or delete existing images
+- Add new text and images, with live preview and undo
+- Keeps the document's own font when possible; Greek, Latin and Cyrillic always supported
+
 **Comment & sign**
 - Highlight text (5 colors), freehand drawing (pen colors & thickness), text boxes, images
 - **Fill & Sign:** fill in PDF forms, draw or type your signature, keep up to 6 saved signatures
@@ -50,7 +56,8 @@ Then right-click any PDF → **Open with → Flipleaf** (you can make it the def
 - Everything is saved as standard PDF annotations, so it shows up in Adobe Acrobat and every other reader
 
 **Files**
-- Open by double-click / *Open with*, the Open dialog, drag & drop, paste (Ctrl+V) or the recent-files list
+- Classic menu bar: File, Edit, View, Tools, Help
+- Open by double-click / *Open with*, the Open dialog, drag & drop, paste (Ctrl+V) or File → Open recent
 - Save (overwrites safely) and Save as; warns before closing with unsaved changes
 - Print, with your annotations and form entries
 - Password-protected PDFs
@@ -63,6 +70,9 @@ Then right-click any PDF → **Open with → Flipleaf** (you can make it the def
 | Key | Action |
 |---|---|
 | Ctrl+O / Ctrl+S / Ctrl+Shift+S | Open / Save / Save as |
+| Ctrl+E | Edit text & images |
+| Ctrl+W | Close document |
+| Alt | Open the menu bar |
 | Ctrl+P | Print |
 | Ctrl+F | Find (Enter / Shift+Enter for next / previous) |
 | Ctrl++ / Ctrl+− | Zoom in / out |
@@ -83,7 +93,7 @@ Then right-click any PDF → **Open with → Flipleaf** (you can make it the def
 Most "lightweight" desktop apps built with web tech (Electron) ship a whole copy of Chrome, which is ~100 MB.
 Flipleaf is built with [Tauri](https://tauri.app) and uses the browser engine **already in your operating system**: WebView2 on Windows, WebKit on macOS and Linux.
 
-- Installer: ~4 MB (Linux .deb 4.25 MB, measured)
+- Installer: ~4–7 MB (Linux .deb 6.35 MB, measured; includes the PDFium editing engine)
 - App code: ~110 KB of HTML/CSS/JS + ~300 lines of Rust, no framework
 - PDF engine: Mozilla [PDF.js](https://mozilla.github.io/pdf.js/), the same one Firefox uses. Fonts, CMaps and image decoders load only when a PDF needs them
 
@@ -116,11 +126,15 @@ Web version only: `cd src && python3 -m http.server 8000`.
 ```
 src/                     the app (shared by desktop and web)
   index.html, style.css  interface
-  app.js                 viewer, tools, signatures, find, print, presentation, read aloud
+  app.js                 viewer, menus, tools, signatures, find, print, presentation, read aloud
+  editor.js              edit text & images (PDFium)
+  legal/                 EULA and third-party notices shown in the app
   platform.js            desktop / web differences (files, dialogs, window)
   i18n.js                English & Greek text
   icons.js               Lucide icons (ISC)
   vendor/pdfjs/          Mozilla PDF.js 6.5.438 (Apache-2.0)
+  vendor/pdfium/         PDFium WebAssembly (BSD-3-Clause / MIT)
+  vendor/fonts/          Flipleaf Sans & Serif (OFL-1.1)
 src-tauri/               desktop shell (Tauri 2 / Rust)
   src/lib.rs             open/save dialogs, file access, recent files, printing
   tauri.conf.json        window, security policy, .pdf association, installers
@@ -129,13 +143,17 @@ src-tauri/               desktop shell (Tauri 2 / Rust)
 
 ## License
 
-Flipleaf: MIT. PDF.js is Apache-2.0 (see `src/vendor/pdfjs/LICENSE`). Lucide icons are ISC (see `src/LICENSE-lucide.txt`).
+- **Source code:** MIT License (`LICENSE`).
+- **End-user license agreement:** `EULA.md` (English & Greek). Shown and accepted in the Windows installer and on first launch, and always available from *Help → License & third-party notices*.
+- **Name and logo:** "Flipleaf" and the leaf logo are not covered by the MIT License (see EULA §3).
+- **Third-party components:** `THIRD-PARTY-NOTICES.txt` — Mozilla PDF.js (Apache-2.0), PDFium (BSD-3-Clause), EmbedPDF PDFium build (MIT), Tauri and every Rust crate (MIT/Apache-2.0), Lucide icons (ISC), Liberation-derived fonts (OFL-1.1).
+- Regenerate the legal files after changing `EULA.md` or dependencies: `python3 scripts/legal.py`.
 
 ---
 
 ## 🇬🇷 Ελληνικά
 
-Το **Flipleaf** («ξεφυλλίζω») είναι ένα πολύ ελαφρύ PDF πρόγραμμα για Windows, macOS και Linux. Διαβάζεις, επισημαίνεις, σχεδιάζεις, προσθέτεις κείμενο και εικόνες, συμπληρώνεις φόρμες, υπογράφεις, εκτυπώνεις και αποθηκεύεις. Το installer είναι περίπου 4 MB, δεν θέλει λογαριασμό και δεν στέλνει τίποτα στο internet. Το περιβάλλον εμφανίζεται στα ελληνικά όταν ο υπολογιστής σου είναι ρυθμισμένος στα ελληνικά.
+Το **Flipleaf** («ξεφυλλίζω») είναι ένα πολύ ελαφρύ PDF πρόγραμμα για Windows, macOS και Linux. Διαβάζεις, επεξεργάζεσαι το υπάρχον κείμενο και τις εικόνες, επισημαίνεις, σχεδιάζεις, συμπληρώνεις φόρμες, υπογράφεις, εκτυπώνεις και αποθηκεύεις. Το installer είναι περίπου 4 MB, δεν θέλει λογαριασμό και δεν στέλνει τίποτα στο internet. Το περιβάλλον εμφανίζεται στα ελληνικά όταν ο υπολογιστής σου είναι ρυθμισμένος στα ελληνικά.
 
 **Κατέβασμα:** από τη σελίδα [Releases](../../releases/latest) διαλέγεις `…x64-setup.exe` για Windows, `…aarch64.dmg` για Mac με τσιπ Apple, `…x64.dmg` για Mac με Intel ή `.AppImage`/`.deb` για Linux.
 
