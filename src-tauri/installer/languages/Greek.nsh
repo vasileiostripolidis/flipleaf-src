@@ -1,4 +1,4 @@
-﻿LangString addOrReinstall ${LANG_GREEK} "Προσθήκη/επανεγκατάσταση στοιχείων"
+LangString addOrReinstall ${LANG_GREEK} "Προσθήκη/επανεγκατάσταση στοιχείων"
 LangString alreadyInstalled ${LANG_GREEK} "Είναι ήδη εγκατεστημένο"
 LangString alreadyInstalledLong ${LANG_GREEK} "Το ${PRODUCTNAME} ${VERSION} είναι ήδη εγκατεστημένο. Επίλεξε τι θέλεις να γίνει και πάτησε Επόμενο."
 LangString appRunning ${LANG_GREEK} "Το ${PRODUCTNAME} είναι ανοιχτό. Κλείσε το και δοκίμασε ξανά."
