@@ -6,13 +6,14 @@ import { t, shortcut, translateDom, LANG } from "./i18n.js";
 import * as platform from "./platform.js";
 import { createEditor } from "./editor.js";
 import { installPro } from "./pro.js";
+import { createSignatureStudio, urlToFile } from "./signature.js";
 
 globalThis.pdfjsLib = pdfjsLib; // the viewer components expect it here
 const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, SpreadMode, LinkTarget } =
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.3.1";
+const VERSION = "1.4.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 
@@ -433,114 +434,77 @@ container.addEventListener("click", (e) => {
 
 /* ================================================================== signature */
 
+const studio = createSignatureStudio({ dialog, icon, toast, store });
+
 async function signDialog() {
   if (!doc.pdf) return;
-  const saved = store.get("signatures", []);
-  const body = document.createElement("div");
-  body.innerHTML = `
-    <div class="tabs">
-      <button type="button" data-tab="draw" class="on">${t("signDraw")}</button>
-      <button type="button" data-tab="type">${t("signType")}</button>
-      <button type="button" data-tab="saved">${t("signSaved")}</button>
-    </div>
-    <section data-pane="draw">
-      <p class="muted small" style="margin:0 0 8px">${t("signDrawHint")}</p>
-      <canvas class="sigpad" width="1000" height="360"></canvas>
-      <div class="sigrow"><button type="button" class="btn secondary sm" data-clear>${t("clear")}</button>
-      <label class="small"><input type="checkbox" data-remember checked> ${t("rememberSig")}</label></div>
-    </section>
-    <section data-pane="type" hidden>
-      <input class="field" data-name placeholder="${t("typeName")}" autocomplete="name">
-      <div class="sigtyped" data-preview></div>
-    </section>
-    <section data-pane="saved" hidden><div class="sigsaved"></div></section>`;
-  const pad = body.querySelector("canvas");
-  const ctx = pad.getContext("2d");
-  ctx.lineCap = ctx.lineJoin = "round"; ctx.lineWidth = 5; ctx.strokeStyle = "#111";
-  let drawing = false, dirty = false, last;
-  const pos = (e) => { const r = pad.getBoundingClientRect(); return [(e.clientX - r.left) * pad.width / r.width, (e.clientY - r.top) * pad.height / r.height]; };
-  pad.onpointerdown = (e) => { drawing = true; last = pos(e); pad.setPointerCapture(e.pointerId); };
-  pad.onpointermove = (e) => {
-    if (!drawing) return;
-    const p = pos(e);
-    ctx.beginPath(); ctx.moveTo(...last); ctx.lineTo(...p); ctx.stroke();
-    last = p; dirty = true;
-  };
-  pad.onpointerup = () => (drawing = false);
-  body.querySelector("[data-clear]").onclick = () => { ctx.clearRect(0, 0, pad.width, pad.height); dirty = false; };
-  const nameIn = body.querySelector("[data-name]"), preview = body.querySelector("[data-preview]");
-  nameIn.oninput = () => (preview.textContent = nameIn.value);
-
-  let tab = "draw";
-  const showTab = (name) => {
-    tab = name;
-    for (const b of body.querySelectorAll("[data-tab]")) b.classList.toggle("on", b.dataset.tab === name);
-    for (const s of body.querySelectorAll("[data-pane]")) s.hidden = s.dataset.pane !== name;
-    if (name === "type") nameIn.focus();
-  };
-  for (const b of body.querySelectorAll("[data-tab]")) b.onclick = () => showTab(b.dataset.tab);
-
-  let chosen = null;
-  const renderSaved = () => {
-    const box = body.querySelector(".sigsaved");
-    box.replaceChildren();
-    if (!saved.length) { box.innerHTML = `<p class="muted small">${t("noSavedSigs")}</p>`; return; }
-    saved.forEach((url, i) => {
-      const item = document.createElement("div");
-      item.className = "item";
-      item.innerHTML = `<img alt=""><button type="button" class="del" aria-label="Delete">${icon("x", 12)}</button>`;
-      item.querySelector("img").src = url;
-      item.onclick = (e) => {
-        if (e.target.closest(".del")) { saved.splice(i, 1); store.set("signatures", saved); renderSaved(); return; }
-        chosen = url; $("dlg").close("place");
-      };
-      box.append(item);
-    });
-  };
-  renderSaved();
-  if (saved.length) showTab("saved");
-
-  const result = await dialog({
-    title: t("signTitle"), body,
-    buttons: [{ label: t("cancel"), value: "cancel", kind: "secondary" }, { label: t("placeSig"), value: "place", kind: "primary" }],
-  });
-  if (result !== "place") return;
-
-  let url = chosen;
-  if (!url && tab === "draw" && dirty) {
-    url = trimCanvas(pad).toDataURL("image/png");
-    if (body.querySelector("[data-remember]").checked) { saved.unshift(url); store.set("signatures", saved.slice(0, 6)); }
-  } else if (!url && tab === "type" && nameIn.value.trim()) {
-    const c = document.createElement("canvas");
-    const font = getComputedStyle(preview).fontFamily;
-    const g = c.getContext("2d");
-    g.font = `120px ${font}`;
-    c.width = Math.ceil(g.measureText(nameIn.value).width) + 40; c.height = 180;
-    g.font = `120px ${font}`; g.fillStyle = "#111"; g.textBaseline = "middle";
-    g.fillText(nameIn.value, 20, 95);
-    url = trimCanvas(c).toDataURL("image/png");
-    saved.unshift(url); store.set("signatures", saved.slice(0, 6));
-  }
-  if (!url) return;
-  const blob = await (await fetch(url)).blob();
-  await addImage(new File([blob], "signature.png", { type: "image/png" }));
-  toast(t("sigPlaced"), 5000);
+  const url = await studio.open();
+  if (url) placeSignature(url);
 }
 $("btnSign").onclick = signDialog;
 
-/** Crops transparent margins around a drawing. */
-function trimCanvas(src) {
-  const { width: w, height: h } = src;
-  const data = src.getContext("2d").getImageData(0, 0, w, h).data;
-  let x0 = w, y0 = h, x1 = 0, y1 = 0;
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (data[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+/** Lets the user click where the signature goes; a preview follows the pointer. */
+function placeSignature(url) {
+  const ghost = new Image();
+  ghost.src = url;
+  ghost.className = "sig-ghost";
+  const widthPt = store.get("sigWidth", 170);
+  const widthPx = () => widthPt * viewer.currentScale * (96 / 72);
+  document.body.append(ghost);
+  document.body.classList.add("placing");
+  toast(t("sigPlaceHint"), 6000);
+  const move = (e) => {
+    ghost.style.width = widthPx() + "px";
+    ghost.style.left = e.clientX - ghost.offsetWidth / 2 + "px";
+    ghost.style.top = e.clientY - ghost.offsetHeight / 2 + "px";
+    ghost.hidden = !e.target.closest?.(".page");
+  };
+  const done = () => {
+    ghost.remove(); document.body.classList.remove("placing");
+    container.removeEventListener("pointermove", move);
+    container.removeEventListener("click", click, true);
+    removeEventListener("keydown", key, true);
+  };
+  const click = async (e) => {
+    const pageDiv = e.target.closest?.(".page");
+    if (!pageDiv) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = pageDiv.getBoundingClientRect();
+    const pageIndex = +pageDiv.dataset.pageNumber - 1;
+    done();
+    await addImageAt(urlToFile(url), pageIndex, e.clientX - r.left, e.clientY - r.top, widthPx());
+    toast(t("sigPlaced"), 4000);
+  };
+  const key = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(); } };
+  container.addEventListener("pointermove", move);
+  container.addEventListener("click", click, true);
+  addEventListener("keydown", key, true);
+}
+
+/** Adds an image as a movable object centred on (px, py) of a page, `widthPx` wide. */
+async function addImageAt(file, pageIndex, px, py, widthPx) {
+  await setTool("stamp");
+  await new Promise((r) => setTimeout(r, 80));
+  const layer = uiManager?.getLayer(pageIndex);
+  if (!layer) return addImage(file);
+  const before = new Set(uiManager.getEditors(pageIndex));
+  await layer.pasteEditor({ mode: ED.STAMP }, { bitmapFile: file });
+  let ed = null;
+  for (let k = 0; k < 60; k++) {
+    ed = [...uiManager.getEditors(pageIndex)].find((x) => !before.has(x));
+    if (ed?.div?.querySelector("canvas") && ed.width > 0) break;
+    await new Promise((r) => setTimeout(r, 50));
   }
-  if (x1 < x0) return src;
-  const pad = 8, out = document.createElement("canvas");
-  out.width = x1 - x0 + pad * 2; out.height = y1 - y0 + pad * 2;
-  out.getContext("2d").drawImage(src, x0 - pad, y0 - pad, out.width, out.height, 0, 0, out.width, out.height);
-  return out;
+  if (!ed) return;
+  const [pw, ph] = ed.parentDimensions;
+  const aspect = (ed.height * ph) / (ed.width * pw);
+  const w = Math.min(0.9, widthPx / pw), h = (w * pw * aspect) / ph;
+  ed.width = w; ed.height = h;
+  ed.setDims();
+  ed.x = Math.max(0, Math.min(1 - w, px / pw - w / 2));
+  ed.y = Math.max(0, Math.min(1 - h, py / ph - h / 2));
+  ed.fixAndSetPosition();
+  ed._onResized?.();
 }
 
 /* ================================================================== find */
@@ -1070,6 +1034,7 @@ async function closeFile() {
 
 const editor = createEditor({
   viewer, eventBus, t, toast, icon,
+  pickSignature: async () => { const url = await studio.open(); return url ? urlToFile(url) : null; },
   onChange: () => setDirty(true),
   onApply: (bytes) => replaceDocumentData(bytes),
 });

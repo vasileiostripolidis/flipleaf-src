@@ -256,6 +256,29 @@ pre.legal { margin: 0; height: min(52vh, 460px); overflow: auto; white-space: pr
   line-height: 1.15; white-space: pre; cursor: text; box-shadow: 0 4px 16px rgb(0 0 0 / .15);
 }
 
+/* ---------- signature studio ---------- */
+.sigstudio .tabs { flex-wrap: wrap; }
+.sigink { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.sigstyles, .siggrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.siggrid.saved { grid-template-columns: repeat(3, 1fr); }
+.sigcard { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 104px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #555; cursor: pointer; font: inherit; }
+.sigcard:hover { border-color: var(--brand); }
+.sigcard.on { box-shadow: 0 0 0 2px var(--brand); border-color: var(--brand); }
+.sigcard span { font-size: 11.5px; }
+.sigimg { max-width: 100%; max-height: 80px; object-fit: contain; }
+.sigactions { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; align-items: center; }
+.sigactions .btn { background: rgb(255 255 255 / .85); color: #333; }
+.sigpreview { min-height: 140px; border: 1px dashed var(--line); border-radius: 10px; display: grid; place-items: center; padding: 10px; }
+.sigpreview .sigimg { max-height: 130px; }
+.checker { background: repeating-conic-gradient(#f2f2f2 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); color: inherit; font: inherit; font-size: 12.5px; padding: 5px 10px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+.sigremember { margin-top: 10px; }
+.sig-ghost { position: fixed; z-index: 70; pointer-events: none; opacity: .75; filter: drop-shadow(0 2px 6px rgb(0 0 0 / .25)); }
+body.placing #viewerContainer, body.placing #viewerContainer * { cursor: copy !important; }
+
 /* ---------- Pro tools ---------- */
 .probadge { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .5px; color: #7a4d00; background: #ffe7a3; border-radius: 4px; padding: 1px 5px; margin-left: 6px; flex: none; }
 @media (prefers-color-scheme: dark) { .probadge { color: #ffe7a3; background: #5a4100; } }

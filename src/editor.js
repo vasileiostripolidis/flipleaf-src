@@ -28,13 +28,14 @@ async function loadFontBytes(file) {
   return fontBytes.get(file);
 }
 
-export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCancel, onChange }) {
+export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCancel, onChange, pickSignature }) {
   let doc = 0, docPtr = 0, form = 0, formInfo = 0;
   const pages = new Map();       // index → { page, text }
   const fonts = new Map();       // "sans-b" → FPDF_FONT
   const modified = new Set();    // page indexes re-rendered by PDFium
   const undo = [];
-  let active = false, selected = null, mode = "select"; // "select" | "addText"
+  let active = false, selected = null, mode = "select"; // "select" | "addText" | "placeImage"
+  let pending = null; // { file, widthPt } waiting for a click
   const ui = buildToolbar();
 
   /* ---------------------------------------------------------- memory helpers */
@@ -261,7 +262,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     changed(i);
   }
 
-  async function addImage(i, file, center) {
+  async function addImage(i, file, center, widthPt = null) {
     const bitmap = await createImageBitmap(file);
     const c = document.createElement("canvas");
     c.width = bitmap.width; c.height = bitmap.height;
@@ -276,7 +277,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     free(pp); free(arr);
     if (!ok) { P.FPDFPageObj_Destroy(img); toast(t("editImageFailed")); return; }
     const pw = P.FPDF_GetPageWidthF(page), ph = P.FPDF_GetPageHeightF(page);
-    let w = Math.min(pw * 0.4, bitmap.width * 0.75), h = w * bitmap.height / bitmap.width;
+    let w = widthPt || Math.min(pw * 0.4, bitmap.width * 0.75), h = w * bitmap.height / bitmap.width;
     if (h > ph * 0.5) { h = ph * 0.5; w = h * bitmap.width / bitmap.height; }
     const [cx, cy] = center || [pw / 2, ph / 2];
     P.FPDFImageObj_SetMatrix(img, w, 0, 0, h, cx - w / 2, cy - h / 2);
@@ -392,6 +393,15 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       const rect = layer.getBoundingClientRect();
       const px = e.clientX - rect.left, py = e.clientY - rect.top;
 
+      if (mode === "placeImage" && pending) {
+        e.preventDefault();
+        const [x, y] = pv.viewport.convertToPdfPoint(px, py);
+        const { file, widthPt } = pending;
+        pending = null;
+        setMode("select");
+        addImage(i, file, [x, y], widthPt).catch(() => toast(t("editImageFailed")));
+        return;
+      }
       if (mode === "addText") {
         e.preventDefault();
         const [x, y] = pv.viewport.convertToPdfPoint(px, py);
@@ -502,6 +512,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <span class="label">${t("editTitle")}</span>
       <button class="btn sm secondary" data-e="addText">${icon("type", 16)}<span>${t("editAddText")}</span></button>
       <button class="btn sm secondary" data-e="addImage">${icon("image-plus", 16)}<span>${t("editAddImage")}</span></button>
+      <button class="btn sm secondary" data-e="addSig">${icon("signature", 16)}<span>${t("sigInsert")}</span></button>
       <div class="sep"></div>
       <select class="field sm" data-e="family"><option value="sans">Sans</option><option value="serif">Serif</option></select>
       <input class="field num sm" data-e="size" type="number" min="4" max="200" step="1" value="12" title="${t("fontSize")}">
@@ -518,7 +529,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <button class="btn primary sm" data-e="done">${t("done")}</button>
       <input type="file" accept="image/*" hidden data-e="file">`;
     const q = (n) => bar.querySelector(`[data-e="${n}"]`);
-    const els = Object.fromEntries(["addText", "addImage", "family", "size", "bold", "italic", "color", "replace", "delete", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
+    const els = Object.fromEntries(["addText", "addImage", "addSig", "family", "size", "bold", "italic", "color", "replace", "delete", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
     let fileTarget = "add";
     els.addText.onclick = () => setMode(mode === "addText" ? "select" : "addText");
     els.addImage.onclick = () => { fileTarget = "add"; els.file.click(); };
@@ -528,8 +539,12 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       if (!f) return;
       try {
         if (fileTarget === "replace") { const it = selectedItem(); if (it) await replaceImage(selected.page, it, f); }
-        else await addImage(viewer.currentPageNumber - 1, f, null);
+        else { pending = { file: f, widthPt: null }; setMode("placeImage"); }
       } catch (e) { toast(t("editImageFailed")); }
+    };
+    els.addSig.onclick = async () => {
+      const file = await pickSignature?.();
+      if (file) { pending = { file, widthPt: 150 }; setMode("placeImage"); }
     };
     els.delete.onclick = () => deleteSelected();
     els.undo.onclick = () => doUndo();
@@ -549,7 +564,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     ui.delete.disabled = !it;
     ui.undo.disabled = !undo.length;
     ui.addText.classList.toggle("on", mode === "addText");
-    ui.hint.textContent = mode === "addText" ? t("editHintAdd") : isText ? t("editHintText") : isImg ? t("editHintImage") : t("editHint");
+    ui.hint.textContent = mode === "placeImage" ? t("editHintPlace") : mode === "addText" ? t("editHintAdd") : isText ? t("editHintText") : isImg ? t("editHintImage") : t("editHint");
     if (isText) {
       ui.family.value = it.serif ? "serif" : "sans";
       ui.size.value = Math.round(it.size * it.scale * 10) / 10;
@@ -582,7 +597,8 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   function setMode(m) {
     mode = m;
     if (m === "addText") select(null, null);
-    for (const l of document.querySelectorAll(".edit-layer")) l.classList.toggle("adding", m === "addText");
+    if (m !== "placeImage") pending = null;
+    for (const l of document.querySelectorAll(".edit-layer")) l.classList.toggle("adding", m === "addText" || m === "placeImage");
     updateToolbar();
   }
 

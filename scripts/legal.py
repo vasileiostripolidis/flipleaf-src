@@ -42,6 +42,8 @@ SECTIONS = [
     ("Lucide icons", "Interface icons", "Copyright Lucide Icons and Contributors", "ISC License", ROOT / "src" / "LICENSE-lucide.txt"),
     ("Flipleaf Sans / Flipleaf Serif fonts (derived from Liberation Fonts 2.1.5)", "Fonts for text added while editing PDFs",
      "Copyright Google Corporation; Red Hat, Inc.", "SIL Open Font License 1.1", VENDOR / "fonts" / "OFL.txt"),
+    ("Signature fonts: Great Vibes, Dancing Script, Caveat, EB Garamond", "Typed signatures",
+     "Copyright their respective authors (see below)", "SIL Open Font License 1.1", VENDOR / "fonts" / "signature" / "OFL.txt"),
 ]
 
 MIT_TEXT = """Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
