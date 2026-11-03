@@ -1,0 +1,39 @@
+{
+  "version": "1.8.1",
+  "notes": "### What's new\n- Updates are checked automatically once a month; Help \u2192 Check for updates works any time\n- Fixed: opening a password-protected PDF on the very first launch no longer closes the app\n- \u0395\u03bd\u03b7\u03bc\u03b5\u03c1\u03ce\u03c3\u03b5\u03b9\u03c2: \u03b1\u03c5\u03c4\u03cc\u03bc\u03b1\u03c4\u03bf\u03c2 \u03ad\u03bb\u03b5\u03b3\u03c7\u03bf\u03c2 \u03bc\u03af\u03b1 \u03c6\u03bf\u03c1\u03ac \u03c4\u03bf\u03bd \u03bc\u03ae\u03bd\u03b1\u00b7 \u0392\u03bf\u03ae\u03b8\u03b5\u03b9\u03b1 \u2192 \u0388\u03bb\u03b5\u03b3\u03c7\u03bf\u03c2 \u03b3\u03b9\u03b1 \u03b5\u03bd\u03b7\u03bc\u03b5\u03c1\u03ce\u03c3\u03b5\u03b9\u03c2 \u03bf\u03c0\u03bf\u03b9\u03b1\u03b4\u03ae\u03c0\u03bf\u03c4\u03b5 \u03c3\u03c4\u03b9\u03b3\u03bc\u03ae\n\n### Downloads\n\n| | |\n|:--|:--|\n| **Windows** 10 / 11 | [`Flipleaf-1.8.1-Windows.exe`](https://github.com/vasileiostripolidis/flipleaf/releases/download/v1.8.1/Flipleaf-1.8.1-Windows.exe) |\n| **macOS** 11+ (Apple silicon & Intel) | [`Flipleaf-1.8.1-macOS.dmg`](https://github.com/vasileiostripolidis/flipleaf/releases/download/v1.8.1/Flipleaf-1.8.1-macOS.dmg) |\n| **Linux** (any distribution) | [`Flipleaf-1.8.1-Linux.AppImage`](https://github.com/vasileiostripolidis/flipleaf/releases/download/v1.8.1/Flipleaf-1.8.1-Linux.AppImage) |\n| **Web** | [Open in your browser](https://vasileiostripolidis.github.io/flipleaf/) |\n\n> [!NOTE]\n> Already installed? Flipleaf updates itself: *Help \u2192 Check for updates\u2026*\n>\n> First install: builds are not code-signed yet. **Windows:** *More info \u2192 Run anyway*. **macOS:** right-click the app \u2192 *Open*.\n\nOffline \u00b7 no telemetry \u00b7 [Privacy](https://github.com/vasileiostripolidis/flipleaf/blob/main/legal/PRIVACY.md) \u00b7 [License](https://github.com/vasileiostripolidis/flipleaf/blob/main/legal/EULA.md)",
+  "pub_date": "2026-11-03T11:44:26Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSK1pmS1FmeUVYN2FNakpneGVoNUFXYzFvaCtvb3l5Rjdmang1aExsK1J0VGtTRmg3ZTk1WjZ3bmFJaUd6Y0ZYeTJEaWttTXM4RGVKZGJwUG1iaUxLZUR2VW14aEp6QUFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA2MDg0CWZpbGU6RmxpcGxlYWZfMS44LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjEuOC4xCnY5L2hEdW9lenZXczlWSlBZaVpYaDcrOWNKd2ptVjdlNlliQTN4bDI3aXBsc215Q0lJN21IZFdJZzFZM09Kd3RLOWNpejFyNmlldWs3WjZINTRhWUFBPT0K",
+      "url": "https://github.com/vasileiostripolidis/flipleaf/releases/download/v1.8.1/Flipleaf-1.8.1-Windows.exe"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSK1pmS1FmeUVYN2FNakpneGVoNUFXYzFvaCtvb3l5Rjdmang1aExsK1J0VGtTRmg3ZTk1WjZ3bmFJaUd6Y0ZYeTJEaWttTXM4RGVKZGJwUG1iaUxLZUR2VW14aEp6QUFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA2MDg0CWZpbGU6RmxpcGxlYWZfMS44LjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjEuOC4xCnY5L2hEdW9lenZXczlWSlBZaVpYaDcrOWNKd2ptVjdlNlliQTN4bDI3aXBsc215Q0lJN21IZFdJZzFZM09Kd3RLOWNpejFyNmlldWs3WjZINTRhWUFBPT0K",
+      "url": "https://github.com/vasileiostripolidis/flipleaf/releases/download/v1.8.1/Flipleaf-1.8.1-Windows.exe"
+    },
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSK1pmS1FmeUVYN1kwTjA3VlV4MmcrL0JuTjQ5UU5tTUovdjNqazh2U0d1QnBFaUFKYnFGLzBsMHVCUFhoOFpQU2NDTlU2UFJscEFWWGtUNmJWWHYrNXluNWRBU1VWVkFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA2MjQ4CWZpbGU6RmxpcGxlYWYuYXBwLnRhci5negl2ZXJzaW9uOjEuOC4xCnhmVkFlc2U3YnRlYWlUZTFodFFiczA1ek53SjY4STZtbGJsYVBUQjlwTGllOTZTQ0RHcmh3QjJmVkEyR05kZVhzazdON1dWRTBWY1p0RXVXSmZ6b0FBPT0K",
+      "url": "https://vasileiostripolidis.github.io/flipleaf/updates/Flipleaf-macOS.app.tar.gz"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSK1pmS1FmeUVYN1kwTjA3VlV4MmcrL0JuTjQ5UU5tTUovdjNqazh2U0d1QnBFaUFKYnFGLzBsMHVCUFhoOFpQU2NDTlU2UFJscEFWWGtUNmJWWHYrNXluNWRBU1VWVkFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA2MjQ4CWZpbGU6RmxpcGxlYWYuYXBwLnRhci5negl2ZXJzaW9uOjEuOC4xCnhmVkFlc2U3YnRlYWlUZTFodFFiczA1ek53SjY4STZtbGJsYVBUQjlwTGllOTZTQ0RHcmh3QjJmVkEyR05kZVhzazdON1dWRTBWY1p0RXVXSmZ6b0FBPT0K",
+      "url": "https://vasileiostripolidis.github.io/flipleaf/updates/Flipleaf-macOS.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSK1pmS1FmeUVYN1kwTjA3VlV4MmcrL0JuTjQ5UU5tTUovdjNqazh2U0d1QnBFaUFKYnFGLzBsMHVCUFhoOFpQU2NDTlU2UFJscEFWWGtUNmJWWHYrNXluNWRBU1VWVkFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA2MjQ4CWZpbGU6RmxpcGxlYWYuYXBwLnRhci5negl2ZXJzaW9uOjEuOC4xCnhmVkFlc2U3YnRlYWlUZTFodFFiczA1ek53SjY4STZtbGJsYVBUQjlwTGllOTZTQ0RHcmh3QjJmVkEyR05kZVhzazdON1dWRTBWY1p0RXVXSmZ6b0FBPT0K",
+      "url": "https://vasileiostripolidis.github.io/flipleaf/updates/Flipleaf-macOS.app.tar.gz"
+    },
+    "darwin-x86_64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSK1pmS1FmeUVYN1kwTjA3VlV4MmcrL0JuTjQ5UU5tTUovdjNqazh2U0d1QnBFaUFKYnFGLzBsMHVCUFhoOFpQU2NDTlU2UFJscEFWWGtUNmJWWHYrNXluNWRBU1VWVkFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA2MjQ4CWZpbGU6RmxpcGxlYWYuYXBwLnRhci5negl2ZXJzaW9uOjEuOC4xCnhmVkFlc2U3YnRlYWlUZTFodFFiczA1ek53SjY4STZtbGJsYVBUQjlwTGllOTZTQ0RHcmh3QjJmVkEyR05kZVhzazdON1dWRTBWY1p0RXVXSmZ6b0FBPT0K",
+      "url": "https://vasileiostripolidis.github.io/flipleaf/updates/Flipleaf-macOS.app.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSK1pmS1FmeUVYN1dUWlhSOWUySGFZMmI5Wlo1L1VJakN2OEpqYnRsRTgvekR2VWJsZG5sZWdDSG1RNk0wc2JsTFRFNWZQTy9mY3JMWmlLMHFRdnIvMkZ1Q1lxWXozT0FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA2MTAwCWZpbGU6RmxpcGxlYWZfMS44LjFfYW1kNjQuQXBwSW1hZ2UJdmVyc2lvbjoxLjguMQpndlFOWmVKZXdmWklOWmRrSTdPd0Y0M0dIQ2V1czNCWi8rMG1FNHhiOEloUkl6Ymp6UlFVN2c2bm52eHdMVlc2OVNpU1craitGWHk3L0NYcWZrQzdEUT09Cg==",
+      "url": "https://github.com/vasileiostripolidis/flipleaf/releases/download/v1.8.1/Flipleaf-1.8.1-Linux.AppImage"
+    },
+    "linux-x86_64-appimage": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSK1pmS1FmeUVYN1dUWlhSOWUySGFZMmI5Wlo1L1VJakN2OEpqYnRsRTgvekR2VWJsZG5sZWdDSG1RNk0wc2JsTFRFNWZQTy9mY3JMWmlLMHFRdnIvMkZ1Q1lxWXozT0FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNzA2MTAwCWZpbGU6RmxpcGxlYWZfMS44LjFfYW1kNjQuQXBwSW1hZ2UJdmVyc2lvbjoxLjguMQpndlFOWmVKZXdmWklOWmRrSTdPd0Y0M0dIQ2V1czNCWi8rMG1FNHhiOEloUkl6Ymp6UlFVN2c2bm52eHdMVlc2OVNpU1craitGWHk3L0NYcWZrQzdEUT09Cg==",
+      "url": "https://github.com/vasileiostripolidis/flipleaf/releases/download/v1.8.1/Flipleaf-1.8.1-Linux.AppImage"
+    }
+  }
+}
