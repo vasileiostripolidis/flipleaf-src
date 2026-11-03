@@ -172,7 +172,7 @@ The same `src/` folder is deployed to GitHub Pages as an installable PWA. `platf
 
 Builds are not code-signed yet, which is why the system asks once. Flipleaf registers as a handler for `.pdf`.
 
-**Updates:** Flipleaf checks for new versions and asks before installing (*Help → Check for updates…*). One click downloads, verifies and installs the signed update, then restarts. Turn automatic checks off in the Help menu. Settings and signatures are kept.
+**Updates:** once a month (on the first launch of each month) Flipleaf checks for a new version and, if there is one, asks before installing. *Help → Check for updates…* checks any time. One click downloads, verifies and installs the signed update, then restarts. Turn automatic checks off in the Help menu. Settings and signatures are kept.
 
 <br>
 
@@ -287,7 +287,7 @@ The "Flipleaf" name and logo are reserved (EULA §3). Third-party components: PD
   - υπογραφές: πληκτρολόγηση, σχεδίαση, εισαγωγή φωτογραφίας, αυτόματη δημιουργία
   - 25 εργαλεία: οργάνωση, συνδυασμός, διαχωρισμός, μετατροπή σε Word, εικόνες ή κείμενο, συμπίεση, φόρμες, κρυπτογράφηση AES-256, redaction, σύγκριση
 - **Τεχνολογία:** Tauri 2 (Rust) · PDF.js · PDFium σε WebAssembly · vanilla JS
-- **Ενημερώσεις:** η εφαρμογή ενημερώνει όταν υπάρχει νέα έκδοση και την εγκαθιστά με ένα κλικ
+- **Ενημερώσεις:** μία φορά τον μήνα η εφαρμογή ελέγχει για νέα έκδοση και, αν υπάρχει, την εγκαθιστά με ένα κλικ· από *Βοήθεια → Έλεγχος για ενημερώσεις…* οποιαδήποτε στιγμή
 - **Απόρρητο:** τα αρχεία δεν φεύγουν ποτέ από τη συσκευή
 - **Άδεια:** κώδικας MIT · όροι χρήσης [EULA.md](legal/EULA.md)
 

@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.8.0";
+const VERSION = "1.8.1";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -169,7 +169,11 @@ async function openFile(file) {
 $("fileInput").addEventListener("change", (e) => openFile(e.target.files[0]));
 $("btnOpen").onclick = openPicker;
 $("btnOpenHome").onclick = openPicker;
-platform.onOpenRequest(openPath);
+// Files the OS asks us to open wait until the license agreement has been answered: a password
+// prompt must never replace the license dialog (that would count as "Decline" and quit).
+let licenseAnswered;
+const licenseGate = new Promise((done) => (licenseAnswered = done));
+platform.onOpenRequest((path) => licenseGate.then(() => openPath(path)));
 
 // remote file in the web version: ?file=https://…
 const remote = new URLSearchParams(location.search).get("file");
@@ -902,13 +906,18 @@ async function setLanguage(lang) {
 }
 {
   const reopen = store.get("reopen", null);
-  if (reopen) { store.set("reopen", null); openPath(reopen).catch(() => {}); }
+  if (reopen) { store.set("reopen", null); licenseGate.then(() => openPath(reopen)).catch(() => {}); }
 }
 
 /* ================================================================== updates */
 
 // Desktop only. Never forced: the user can always choose "Later" or skip a version.
-const UPDATE_INTERVAL = 6 * 3600 * 1000;
+// Automatic check: once per calendar month, on the first launch on or after the 1st
+// (a failed check, e.g. offline, is retried on the next launch). Manual check: any time.
+const monthOf = (time) => { const d = new Date(time); return d.getFullYear() * 12 + d.getMonth(); };
+const updateCheckDue = () => monthOf(store.get("lastUpdateCheck", 0)) !== monthOf(Date.now());
+/** Resolves when no other dialog (password, license, a tool) is open, so the update prompt never replaces one. */
+const whenNoDialog = () => new Promise((done) => { const tick = () => ($("dlg").open ? setTimeout(tick, 1500) : done()); tick(); });
 
 async function checkForUpdates(manual) {
   if (!platform.isDesktop) { if (manual) toast(t("upWeb")); return; }
@@ -918,6 +927,7 @@ async function checkForUpdates(manual) {
   store.set("lastUpdateCheck", Date.now());
   if (!info) { if (manual) toast(t("upLatest", { v: VERSION })); return; }
   if (!manual && store.get("skipVersion", null) === info.version) return;
+  if (!manual) await whenNoDialog();
 
   const body = document.createElement("div");
   const p = document.createElement("p");
@@ -948,7 +958,7 @@ async function checkForUpdates(manual) {
   } catch (e) { toast(t("upFailed", { e: String(e) }), 8000); }
 }
 
-if (platform.isDesktop && store.get("autoUpdate", true) && Date.now() - store.get("lastUpdateCheck", 0) > UPDATE_INTERVAL) {
+if (platform.isDesktop && store.get("autoUpdate", true) && updateCheckDue()) {
   setTimeout(() => checkForUpdates(false), 5000);
 }
 
@@ -1235,7 +1245,7 @@ async function requireLicense() {
   if (r === "accept") store.set("eula", EULA_VERSION);
   else platform.quit();
 }
-requireLicense();
+requireLicense().then(() => licenseAnswered());
 
 /* ================================================================== window controls (custom title bar) */
 
