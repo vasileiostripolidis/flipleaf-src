@@ -30,7 +30,7 @@ Flipleaf is a cross-platform PDF reader and editor: a small native shell (Tauri 
 |  |  |
 |:--|:--|
 | **~6 MB** installer | Uses the OS web engine (WebView2 / WebKit) instead of bundling Chromium |
-| **0** network requests | Strict CSP and scoped file I/O through 12 explicit IPC commands |
+| **0** telemetry | Strict CSP, scoped file I/O through explicit IPC commands; the only request is an optional, signed update check |
 | **25** document tools | Organize, convert, forms, encryption, redaction, compare |
 | **4** targets | Windows · macOS (Apple silicon + Intel) · Linux · installable PWA |
 | **2** languages | English and Greek, across the UI, installers and license |
@@ -44,7 +44,7 @@ Flipleaf is a cross-platform PDF reader and editor: a small native shell (Tauri 
 <td width="33%" valign="top">
 
 #### Read
-Virtualized rendering, book and continuous layouts, thumbnails and outline, diacritic-insensitive search, presentation mode, read-aloud, and **light / dark themes** that follow the system or can be switched with one click.
+Automatic, signed updates. Virtualized rendering, book and continuous layouts, thumbnails and outline, diacritic-insensitive search, presentation mode, read-aloud, and **light / dark themes** that follow the system or can be switched with one click.
 
 </td>
 <td width="33%" valign="top">
@@ -128,7 +128,8 @@ AES-256 encryption with permissions, true redaction that removes the content its
 | IPC surface | 12 purpose-built commands. No generic fs or shell plugins exposed |
 | File scope | Read/write only for files the user opened, picked in a native dialog, or has in the recent list |
 | Capabilities | Minimal Tauri capability set: window controls only |
-| Network | None. Links go to the OS browser through `open_url` (http, https, mailto only) |
+| Network | The web view has none. Rust performs the optional update check against GitHub Releases; links go to the OS browser through `open_url` (http, https, mailto only) |
+| Updates | Signed with an Ed25519 key (minisign); unsigned or tampered packages are rejected. Never installed without confirmation |
 | Encryption | AES-256 through PDFium's standard security handler |
 | Redaction | Glyphs and images inside the marked area are removed from the content stream, not covered |
 
@@ -170,7 +171,9 @@ The same `src/` folder is deployed to GitHub Pages as an installable PWA. `platf
 | **Linux** x64 (WebKitGTK 4.1) | `.AppImage` · `.deb` · `.rpm` | Ubuntu 22.04+, Debian 12+, Fedora 38+ |
 | **Browser** | [Open the web app](https://vasileiostripolidis.github.io/flipleaf/) | Chrome, Edge, Firefox, Safari. Installable as a PWA |
 
-Builds are not code-signed yet, which is why the system asks once. Flipleaf registers as a handler for `.pdf`. To update, install the new version over the old one. Settings and signatures are kept.
+Builds are not code-signed yet, which is why the system asks once. Flipleaf registers as a handler for `.pdf`.
+
+**Updates:** Flipleaf checks for new versions and asks before installing (*Help → Check for updates…*). One click downloads, verifies and installs the signed update, then restarts. Turn automatic checks off in the Help menu. Linux `.deb` / `.rpm` installs get a notification with a download link. Settings and signatures are kept.
 
 <br>
 
@@ -186,7 +189,7 @@ npm run build      # installers → src-tauri/target/release/bundle/
 Requires [Node.js](https://nodejs.org) 18+ and [Rust](https://rustup.rs) stable. On Linux, also `libwebkit2gtk-4.1-dev librsvg2-dev`.
 Web only, no toolchain: `cd src && python3 -m http.server 8000`.
 
-**Release pipeline:** *Actions → Release → Run workflow*, or push a `v*` tag. It builds Windows x64, macOS arm64, macOS x64 and Linux x64 in parallel into a draft release. Every push to `main` redeploys the web app.
+**Release pipeline:** *Actions → Release → Run workflow* (optionally with *What's new* notes), or push a `v*` tag. It builds Windows x64, macOS arm64, macOS x64 and Linux x64 in parallel, signs the update packages, and publishes `latest.json` for the in-app updater in a draft release. Every push to `main` redeploys the web app.
 
 <details>
 <summary><b>Project layout</b></summary>
@@ -249,7 +252,7 @@ docs/                      README artwork
 </details>
 <details>
 <summary><b>Does it phone home or expire?</b></summary>
-<br>No. There is no server dependency, no license check, no telemetry and no expiry date.
+<br>No. There is no server dependency, no license check, no telemetry and no expiry date. The only network request is the optional update check, which sends nothing about you or your files.
 </details>
 <details>
 <summary><b>Will my edits show up in other PDF readers?</b></summary>
@@ -283,6 +286,7 @@ The "Flipleaf" name and logo are reserved (EULA §3). Third-party components: PD
   - υπογραφές: πληκτρολόγηση, σχεδίαση, εισαγωγή φωτογραφίας, αυτόματη δημιουργία
   - 25 εργαλεία: οργάνωση, συνδυασμός, διαχωρισμός, μετατροπή σε Word, εικόνες ή κείμενο, συμπίεση, φόρμες, κρυπτογράφηση AES-256, redaction, σύγκριση
 - **Τεχνολογία:** Tauri 2 (Rust) · PDF.js · PDFium σε WebAssembly · vanilla JS
+- **Ενημερώσεις:** η εφαρμογή ενημερώνει όταν υπάρχει νέα έκδοση και την εγκαθιστά με ένα κλικ
 - **Απόρρητο:** τα αρχεία δεν φεύγουν ποτέ από τη συσκευή
 - **Άδεια:** κώδικας MIT · όροι χρήσης [EULA.md](EULA.md)
 

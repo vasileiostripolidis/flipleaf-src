@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -886,6 +886,53 @@ darkQuery.addEventListener("change", updateThemeButton);
 $("btnTheme").onclick = () => setTheme(isDark() ? "light" : "dark");
 setTheme(store.get("theme", "system"));
 
+/* ================================================================== updates */
+
+// Desktop only. Never forced: the user can always choose "Later" or skip a version.
+const UPDATE_INTERVAL = 6 * 3600 * 1000;
+
+async function checkForUpdates(manual) {
+  if (!platform.isDesktop) { if (manual) toast(t("upWeb")); return; }
+  let info;
+  try { info = await platform.checkUpdate(); }
+  catch { if (manual) toast(t("upError"), 5000); return; }
+  store.set("lastUpdateCheck", Date.now());
+  if (!info) { if (manual) toast(t("upLatest", { v: VERSION })); return; }
+  if (!manual && store.get("skipVersion", null) === info.version) return;
+
+  const body = document.createElement("div");
+  const p = document.createElement("p");
+  p.textContent = t("upBody", { v: info.version, cur: VERSION });
+  body.append(p);
+  // Only the "What's new" section of the release text is shown (the rest is the download table).
+  const news = info.notes?.match(/#+\s*What's new\s*\n([\s\S]*?)(?=\n#+\s|$)/i)?.[1].replace(/[*`]/g, "").trim();
+  if (news) {
+    const h = document.createElement("p"), pre = document.createElement("div");
+    h.className = "small muted"; h.textContent = t("upNotes");
+    pre.className = "upnotes"; pre.textContent = news.slice(0, 1500);
+    body.append(h, pre);
+  }
+  const choice = await dialog({ title: t("upTitle"), body, buttons: [
+    { label: t("upSkip"), value: "skip" },
+    { label: t("upLater"), value: "cancel" },
+    { label: info.canInstall ? t("upInstall") : t("upDownload"), value: "go", kind: "primary" },
+  ] });
+  if (choice === "skip") return store.set("skipVersion", info.version);
+  if (choice !== "go") return;
+  if (!info.canInstall) return platform.openExternal("https://github.com/vasileiostripolidis/flipleaf/releases/latest");
+  if (doc.dirty) return toast(t("upSaveFirst"), 5000);
+  try {
+    await platform.installUpdate((got, total) => {
+      toast(total ? t("upDownloading", { p: Math.round((got / total) * 100) + "%" }) : t("upDownloading", { p: "" }), 60000);
+      if (total && got >= total) toast(t("upRestart"), 60000);
+    });
+  } catch (e) { toast(t("upFailed", { e: String(e) }), 8000); }
+}
+
+if (platform.isDesktop && store.get("autoUpdate", true) && Date.now() - store.get("lastUpdateCheck", 0) > UPDATE_INTERVAL) {
+  setTimeout(() => checkForUpdates(false), 5000);
+}
+
 /* ================================================================== menu bar */
 
 const hasDoc = () => !!doc.pdf;
@@ -967,6 +1014,9 @@ const MENUS = {
   help: () => [
     { label: "shortcuts", key: "?", icon: "keyboard", run: showShortcuts },
     { label: "licenses", icon: "scale", run: () => showLicense(false) },
+    "-",
+    { label: "checkUpdates", icon: "download", run: () => checkForUpdates(true), when: () => platform.isDesktop },
+    { label: "autoUpdates", check: store.get("autoUpdate", true), run: () => store.set("autoUpdate", !store.get("autoUpdate", true)), when: () => platform.isDesktop },
     "-",
     { label: "about", icon: "circle-help", run: showAbout },
   ],
@@ -1133,7 +1183,7 @@ function busy(message) {
 
 /* ================================================================== license agreement */
 
-const EULA_VERSION = "1.1";
+const EULA_VERSION = "1.2";
 async function showLicense(requireAccept) {
   const load = (f) => fetch(new URL(`./legal/${f}`, import.meta.url)).then((r) => r.text()).catch(() => "");
   const [eula, notices] = await Promise.all([load("EULA.txt"), load("THIRD-PARTY-NOTICES.txt")]);

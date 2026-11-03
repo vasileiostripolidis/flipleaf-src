@@ -151,3 +151,14 @@ export function onMaximizedChange(cb) {
 export function quit() {
   if (isDesktop) T.window.getCurrentWindow().close().catch(() => {});
 }
+
+/* ---------------------------------------------------------------- updates (desktop only) */
+
+/** Resolves to { version, notes, canInstall } when a newer signed release exists, else null. */
+export function checkUpdate() { return invoke("check_update"); }
+
+/** Downloads and installs the pending update, reporting (received, total) bytes, then restarts. */
+export async function installUpdate(onProgress) {
+  const off = await T.event.listen("update-progress", (e) => onProgress?.(...e.payload));
+  try { await invoke("install_update"); } finally { off(); }
+}

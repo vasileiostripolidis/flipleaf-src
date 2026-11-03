@@ -1,5 +1,5 @@
 FLIPLEAF — END USER LICENSE AGREEMENT
-Version 1.1 — effective 2 November 2026
+Version 1.2 — effective 3 November 2026
 
 Copyright (c) 2026 Vasileios Tripolidis. All rights reserved, except as granted below.
 
@@ -18,7 +18,7 @@ The source code of the Software is published at https://github.com/vasileiostrip
 The Software includes open-source components, each under its own license, including: Mozilla PDF.js (Apache License 2.0), PDFium (BSD-3-Clause and related licenses), the EmbedPDF PDFium build (MIT), Tauri (MIT or Apache License 2.0), Lucide icons (ISC), fonts derived from the Liberation Fonts, and the signature fonts Great Vibes, Dancing Script, Caveat and EB Garamond (SIL Open Font License 1.1). The full list and license texts are in the file THIRD-PARTY-NOTICES, available from Help > License & third-party notices.
 
 5. PRIVACY
-The Software works offline. It does not collect, store or send personal data, documents, usage statistics or crash reports, and it contains no advertising or tracking. Your files, and the signatures you save, are kept only on your device. The Software connects to the internet only when you click a web link inside a document, which then opens in your web browser. The optional web version is hosted by GitHub Pages; GitHub may process technical data (such as IP addresses) under its own privacy statement, but your documents are never uploaded.
+The Software works offline. It does not collect, store or send personal data, documents, usage statistics or crash reports, and it contains no advertising or tracking. Your files, and the signatures you save, are kept only on your device. The Software connects to the internet only (a) when you click a web link inside a document, which then opens in your web browser, and (b) to check GitHub for a newer version, if automatic update checks are on (you can turn them off in Help > Check for updates automatically). An update check sends no personal data or documents; like any web request, it reveals your IP address to GitHub. The optional web version is hosted by GitHub Pages; GitHub may process technical data (such as IP addresses) under its own privacy statement, but your documents are never uploaded.
 
 6. YOUR DOCUMENTS, SIGNATURES AND LAWFUL USE
 You keep all rights to your documents. You use the Software at your own responsibility and only for lawful purposes. In particular, you must not use it to forge or imitate another person's signature, to alter a document in a misleading or unlawful way, to remove passwords or restrictions from documents you are not entitled to unlock, or to infringe the rights of others. You are responsible for making sure you have the right to view, edit, sign, print, unlock and share the documents you use with the Software. Signatures created with the Software (typed, drawn, imported or generated) are images placed on the page. They are simple electronic signatures, not certificate-based or qualified electronic signatures, and their legal effect depends on the law that applies to you and to the document.
@@ -36,7 +36,7 @@ To the maximum extent permitted by law, the author is not liable for any direct,
 To the extent permitted by law, you agree to hold the author harmless from claims by third parties that result from your unlawful use of the Software or your breach of this agreement.
 
 11. UPDATES
-New versions are published on the project's Releases page. The Software does not update itself. A new version may come with an updated agreement, which applies to that version.
+New versions are published on the project's Releases page. The Software can tell you when a new version is available and, if you choose, download and install it. Updates are digitally signed and are never installed without your confirmation. You may keep using the version you have. A new version may come with an updated agreement, which applies to that version and is shown before it is installed or first used.
 
 12. TERMINATION
 This agreement ends automatically if you break its terms. When it ends, stop using the Software and delete your copies. Sections 6 to 10, 13 and 14 continue to apply.
@@ -53,7 +53,7 @@ Questions about this agreement: https://github.com/vasileiostripolidis/flipleaf/
 -------------------------------------------------------------------------------
 
 FLIPLEAF — ΣΥΜΦΩΝΙΑ ΑΔΕΙΑΣ ΧΡΗΣΗΣ ΤΕΛΙΚΟΥ ΧΡΗΣΤΗ
-Έκδοση 1.1 — ισχύει από 2 Νοεμβρίου 2026
+Έκδοση 1.2 — ισχύει από 3 Νοεμβρίου 2026
 
 Πνευματικά δικαιώματα (c) 2026 Βασίλειος Τριπολίδης. Με την επιφύλαξη παντός δικαιώματος, εκτός από όσα παραχωρούνται παρακάτω.
 
@@ -72,7 +72,7 @@ FLIPLEAF — ΣΥΜΦΩΝΙΑ ΑΔΕΙΑΣ ΧΡΗΣΗΣ ΤΕΛΙΚΟΥ ΧΡΗΣ�
 Το Λογισμικό περιλαμβάνει στοιχεία ανοιχτού κώδικα, το καθένα με τη δική του άδεια, μεταξύ των οποίων: Mozilla PDF.js (Apache License 2.0), PDFium (BSD-3-Clause και σχετικές άδειες), η έκδοση PDFium του EmbedPDF (MIT), Tauri (MIT ή Apache License 2.0), εικονίδια Lucide (ISC), γραμματοσειρές που προέρχονται από τις Liberation Fonts και οι γραμματοσειρές υπογραφών Great Vibes, Dancing Script, Caveat και EB Garamond (SIL Open Font License 1.1). Η πλήρης λίστα και τα κείμενα των αδειών βρίσκονται στο αρχείο THIRD-PARTY-NOTICES, διαθέσιμο από Βοήθεια > Άδεια χρήσης & λογισμικό τρίτων.
 
 5. ΙΔΙΩΤΙΚΟΤΗΤΑ
-Το Λογισμικό λειτουργεί χωρίς σύνδεση. Δεν συλλέγει, δεν αποθηκεύει και δεν αποστέλλει προσωπικά δεδομένα, έγγραφα, στατιστικά χρήσης ή αναφορές σφαλμάτων, και δεν περιέχει διαφημίσεις ή παρακολούθηση. Τα αρχεία σου και οι υπογραφές που αποθηκεύεις παραμένουν μόνο στη συσκευή σου. Το Λογισμικό συνδέεται στο διαδίκτυο μόνο όταν κάνεις κλικ σε σύνδεσμο μέσα σε έγγραφο, ο οποίος ανοίγει στον browser σου. Η προαιρετική έκδοση web φιλοξενείται από το GitHub Pages. Το GitHub μπορεί να επεξεργάζεται τεχνικά δεδομένα (όπως διευθύνσεις IP) σύμφωνα με τη δική του δήλωση απορρήτου, αλλά τα έγγραφά σου δεν ανεβαίνουν ποτέ πουθενά.
+Το Λογισμικό λειτουργεί χωρίς σύνδεση. Δεν συλλέγει, δεν αποθηκεύει και δεν αποστέλλει προσωπικά δεδομένα, έγγραφα, στατιστικά χρήσης ή αναφορές σφαλμάτων, και δεν περιέχει διαφημίσεις ή παρακολούθηση. Τα αρχεία σου και οι υπογραφές που αποθηκεύεις παραμένουν μόνο στη συσκευή σου. Το Λογισμικό συνδέεται στο διαδίκτυο μόνο (α) όταν κάνεις κλικ σε σύνδεσμο μέσα σε έγγραφο, ο οποίος ανοίγει στον browser σου, και (β) για να ελέγξει στο GitHub αν υπάρχει νεότερη έκδοση, εφόσον ο αυτόματος έλεγχος είναι ενεργός (μπορείς να τον απενεργοποιήσεις από Βοήθεια > Αυτόματος έλεγχος για ενημερώσεις). Ο έλεγχος δεν αποστέλλει προσωπικά δεδομένα ή έγγραφα· όπως κάθε σύνδεση στο διαδίκτυο, η διεύθυνση IP σου γίνεται γνωστή στο GitHub. Η προαιρετική έκδοση web φιλοξενείται από το GitHub Pages. Το GitHub μπορεί να επεξεργάζεται τεχνικά δεδομένα (όπως διευθύνσεις IP) σύμφωνα με τη δική του δήλωση απορρήτου, αλλά τα έγγραφά σου δεν ανεβαίνουν ποτέ πουθενά.
 
 6. ΤΑ ΕΓΓΡΑΦΑ ΚΑΙ ΟΙ ΥΠΟΓΡΑΦΕΣ ΣΟΥ — ΝΟΜΙΜΗ ΧΡΗΣΗ
 Διατηρείς όλα τα δικαιώματα στα έγγραφά σου. Χρησιμοποιείς το Λογισμικό με δική σου ευθύνη και μόνο για νόμιμους σκοπούς. Ειδικότερα, δεν επιτρέπεται να το χρησιμοποιήσεις για να πλαστογραφήσεις ή να μιμηθείς την υπογραφή άλλου προσώπου, για να αλλοιώσεις έγγραφο με παραπλανητικό ή παράνομο τρόπο, για να αφαιρέσεις κωδικούς ή περιορισμούς από έγγραφα που δεν δικαιούσαι να ξεκλειδώσεις, ή για να προσβάλεις δικαιώματα τρίτων. Είσαι υπεύθυνος να έχεις το δικαίωμα να βλέπεις, επεξεργάζεσαι, υπογράφεις, εκτυπώνεις, ξεκλειδώνεις και μοιράζεσαι τα έγγραφα που χρησιμοποιείς με το Λογισμικό. Οι υπογραφές που δημιουργούνται με το Λογισμικό (πληκτρολογημένες, σχεδιασμένες, εισαγόμενες ή αυτόματα δημιουργημένες) είναι εικόνες πάνω στη σελίδα. Είναι απλές ηλεκτρονικές υπογραφές, όχι ψηφιακές υπογραφές με πιστοποιητικό ούτε εγκεκριμένες ηλεκτρονικές υπογραφές, και η νομική τους ισχύς εξαρτάται από το δίκαιο που εφαρμόζεται σε σένα και στο έγγραφο.
@@ -90,7 +90,7 @@ FLIPLEAF — ΣΥΜΦΩΝΙΑ ΑΔΕΙΑΣ ΧΡΗΣΗΣ ΤΕΛΙΚΟΥ ΧΡΗΣ�
 Στον βαθμό που επιτρέπει ο νόμος, συμφωνείς να απαλλάσσεις τον δημιουργό από αξιώσεις τρίτων που προκύπτουν από παράνομη χρήση του Λογισμικού από εσένα ή από παραβίαση αυτής της συμφωνίας.
 
 11. ΕΝΗΜΕΡΩΣΕΙΣ
-Οι νέες εκδόσεις δημοσιεύονται στη σελίδα Releases του έργου. Το Λογισμικό δεν ενημερώνεται αυτόματα. Μια νέα έκδοση μπορεί να συνοδεύεται από ενημερωμένη συμφωνία, η οποία ισχύει για εκείνη την έκδοση.
+Οι νέες εκδόσεις δημοσιεύονται στη σελίδα Releases του έργου. Το Λογισμικό μπορεί να σε ενημερώνει όταν υπάρχει νέα έκδοση και, αν το επιλέξεις, να την κατεβάζει και να την εγκαθιστά. Οι ενημερώσεις φέρουν ψηφιακή υπογραφή και δεν εγκαθίστανται ποτέ χωρίς την επιβεβαίωσή σου. Μπορείς να συνεχίσεις να χρησιμοποιείς την έκδοση που έχεις. Μια νέα έκδοση μπορεί να συνοδεύεται από ενημερωμένη συμφωνία, η οποία ισχύει για εκείνη την έκδοση και εμφανίζεται πριν την εγκατάσταση ή την πρώτη χρήση της.
 
 12. ΛΗΞΗ
 Η συμφωνία λήγει αυτόματα αν παραβιάσεις τους όρους της. Τότε πρέπει να σταματήσεις τη χρήση του Λογισμικού και να διαγράψεις τα αντίγραφά σου. Οι ενότητες 6 έως 10, 13 και 14 εξακολουθούν να ισχύουν.

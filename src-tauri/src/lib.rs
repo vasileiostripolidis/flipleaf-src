@@ -2,7 +2,7 @@
 //!
 //! The viewer itself is the web app in `../src`. Rust handles what a web page can't:
 //! native Open/Save dialogs, reading and writing files, recent files, printing and
-//! opening links in the system browser.
+//! opening links in the system browser, and checking for / installing updates.
 //!
 //! Security model: the interface can only read or overwrite PDF files that *the user*
 //! chose — opened from the OS ("Open with", double-click), picked in an Open/Save
@@ -292,6 +292,61 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+/* ------------------------------------------------------------------ updates */
+
+/// Updates are signed; the public key is in tauri.conf.json. The check runs here in
+/// Rust, so the interface itself still has no network access.
+mod updates {
+    use serde::Serialize;
+    use std::sync::Mutex;
+    use tauri::{AppHandle, Emitter, State};
+    use tauri_plugin_updater::{Update, UpdaterExt};
+
+    #[derive(Default)]
+    pub struct Pending(Mutex<Option<Update>>);
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Info {
+        version: String,
+        notes: Option<String>,
+        /// false for Linux .deb/.rpm installs: those are updated through the download page.
+        can_install: bool,
+    }
+
+    fn can_install() -> bool {
+        !cfg!(target_os = "linux") || std::env::var_os("APPIMAGE").is_some()
+    }
+
+    #[tauri::command]
+    pub async fn check_update(app: AppHandle, pending: State<'_, Pending>) -> Result<Option<Info>, String> {
+        let update = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+        Ok(update.map(|u| {
+            let info = Info { version: u.version.clone(), notes: u.body.clone(), can_install: can_install() };
+            *pending.0.lock().unwrap() = Some(u);
+            info
+        }))
+    }
+
+    #[tauri::command]
+    pub async fn install_update(app: AppHandle, pending: State<'_, Pending>) -> Result<(), String> {
+        let update = pending.0.lock().unwrap().take().ok_or("No update was found.")?;
+        let progress = app.clone();
+        let mut received: u64 = 0;
+        update
+            .download_and_install(
+                move |chunk, total| {
+                    received += chunk as u64;
+                    let _ = progress.emit("update-progress", (received, total));
+                },
+                || {},
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        app.restart();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let files = Files::default();
@@ -303,7 +358,9 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(files)
+        .manage(updates::Pending::default())
         .setup(|app| {
             *app.state::<Files>().recent.lock().unwrap() = load_recent(app.handle());
             Ok(())
@@ -320,7 +377,9 @@ pub fn run() {
             recent_files,
             forget_recent,
             print_window,
-            open_url
+            open_url,
+            updates::check_update,
+            updates::install_update
         ])
         .build(tauri::generate_context!())
         .expect("error while building Flipleaf");

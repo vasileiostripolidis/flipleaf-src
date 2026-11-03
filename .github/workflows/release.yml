@@ -8,6 +8,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      notes:
+        description: "What's new (shown on the release page and in the in-app update dialog)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -53,10 +58,13 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Flipleaf v__VERSION__"
           releaseBody: |
+            ${{ inputs.notes != '' && format('### What''s new{0}{1}{0}', fromJSON('"\n"'), inputs.notes) || '' }}
             ### Downloads
 
             | Platform | File |
