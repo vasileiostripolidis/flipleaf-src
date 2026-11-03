@@ -1,9 +1,12 @@
 # Builds and publishes a Flipleaf release.
 # Run it from Actions → Release → Run workflow (optionally with "What's new" notes).
 #
-# The release page shows exactly three downloads: Windows (.exe), macOS (universal .dmg)
-# and Linux (.AppImage). The in-app updater's files (latest.json and the macOS update
-# package) are published on the website under /updates/, not on the release page.
+# This (private) repository holds the source. The release is published in the PUBLIC
+# repository vasileiostripolidis/flipleaf with exactly three downloads: Windows (.exe),
+# macOS (universal .dmg) and Linux (.AppImage). The in-app updater's files (latest.json and
+# the macOS update package) go to the public website under /updates/.
+# If the STORE_* repository variables are set, a Microsoft Store package (.msix) is built
+# too and attached to the workflow run, ready to upload to Partner Center.
 name: Release
 
 on:
@@ -15,8 +18,7 @@ on:
         default: ""
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 jobs:
   build:
@@ -91,11 +93,42 @@ jobs:
           path: out/
           retention-days: 7
 
+  store:
+    if: vars.STORE_IDENTITY_NAME != ''
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - name: Store build (no built-in updater)
+        run: npx tauri build --features store --no-bundle
+      - name: Package for the Microsoft Store
+        shell: bash
+        env:
+          STORE_IDENTITY_NAME: ${{ vars.STORE_IDENTITY_NAME }}
+          STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
+          STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          python .github/scripts/make_msix.py "$V" "out/Flipleaf-$V-Store.msix"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Microsoft-Store
+          path: out/*.msix
+          retention-days: 30
+
   publish:
     needs: build
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+      PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
       NOTES: ${{ inputs.notes }}
     steps:
       - uses: actions/checkout@v4
@@ -103,6 +136,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: "{Windows,macOS,Linux}"
           merge-multiple: true
 
       - name: Release notes and update manifest
@@ -111,23 +145,11 @@ jobs:
           echo "V=$V" >> "$GITHUB_ENV"
           python3 .github/scripts/release_files.py "$V" dist
 
-      - name: Publish the release
+      - name: Publish the release (public repository)
         run: |
           gh release create "v$V" \
             "dist/Flipleaf-$V-Windows.exe" "dist/Flipleaf-$V-macOS.dmg" "dist/Flipleaf-$V-Linux.AppImage" \
-            --target "$GITHUB_SHA" --title "Flipleaf v$V" --notes-file dist/body.md --latest
-
-      - name: Store the updater files
-        run: |
-          mkdir -p /tmp/updates && cp dist/latest.json dist/Flipleaf-macOS.app.tar.gz /tmp/updates/
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan updates
-          git rm -rfq .
-          cp /tmp/updates/* .
-          git add latest.json Flipleaf-macOS.app.tar.gz
-          git commit -qm "Updater files for v$V"
-          git push -f origin updates
+            --repo vasileiostripolidis/flipleaf --title "Flipleaf v$V" --notes-file dist/body.md --latest
 
       - name: Publish the website with the new updater files
-        run: gh workflow run pages.yml --ref main
+        run: .github/scripts/publish_site.sh dist

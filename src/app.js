@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.8.1";
+const VERSION = "1.9.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -856,7 +856,7 @@ function showShortcuts() {
 function showAbout() {
   const p = document.createElement("p");
   p.style.whiteSpace = "pre-line"; p.style.margin = "0";
-  p.textContent = t("aboutBody", { v: VERSION }) + "\n\n© 2026 Vasileios Tripolidis. Flipleaf is open-source software (MIT License).";
+  p.textContent = t("aboutBody", { v: VERSION }) + "\n\n© 2026 Vasileios Tripolidis. All rights reserved.";
   dialog({ title: t("about"), body: p, buttons: [{ label: t("ok"), value: "ok", kind: "primary" }] });
 }
 
@@ -958,9 +958,12 @@ async function checkForUpdates(manual) {
   } catch (e) { toast(t("upFailed", { e: String(e) }), 8000); }
 }
 
-if (platform.isDesktop && store.get("autoUpdate", true) && updateCheckDue()) {
-  setTimeout(() => checkForUpdates(false), 5000);
-}
+// "direct" | "store" | "web"; the Store and the web version update themselves.
+let updateChannel = platform.isDesktop ? "direct" : "web";
+platform.updateChannel.then((c) => {
+  updateChannel = c;
+  if (c === "direct" && store.get("autoUpdate", true) && updateCheckDue()) setTimeout(() => checkForUpdates(false), 5000);
+});
 
 /* ================================================================== menu bar */
 
@@ -1045,8 +1048,8 @@ const MENUS = {
     { label: "shortcuts", key: "?", icon: "keyboard", run: showShortcuts },
     { label: "licenses", icon: "scale", run: () => showLicense(false) },
     "-",
-    { label: "checkUpdates", icon: "download", run: () => checkForUpdates(true), when: () => platform.isDesktop },
-    { label: "autoUpdates", check: store.get("autoUpdate", true), run: () => store.set("autoUpdate", !store.get("autoUpdate", true)), when: () => platform.isDesktop },
+    { label: "checkUpdates", icon: "download", run: () => checkForUpdates(true), when: () => updateChannel === "direct" },
+    { label: "autoUpdates", check: store.get("autoUpdate", true), run: () => store.set("autoUpdate", !store.get("autoUpdate", true)), when: () => updateChannel === "direct" },
     "-",
     { label: "about", icon: "circle-help", run: showAbout },
   ],
@@ -1213,7 +1216,7 @@ function busy(message) {
 
 /* ================================================================== license agreement */
 
-const EULA_VERSION = "1.2";
+const EULA_VERSION = "1.3";
 async function showLicense(requireAccept) {
   const load = (f) => fetch(new URL(`./legal/${f}`, import.meta.url)).then((r) => r.text()).catch(() => "");
   const [eula, notices] = await Promise.all([load("EULA.txt"), load("THIRD-PARTY-NOTICES.txt")]);
@@ -1221,7 +1224,7 @@ async function showLicense(requireAccept) {
   box.innerHTML = `<p class="muted small" style="margin:0 0 10px"></p>
     <div class="tabs"><button type="button" class="on" data-tab="eula"></button><button type="button" data-tab="notices"></button></div>
     <pre class="legal"></pre>`;
-  box.querySelector("p").textContent = requireAccept ? t("licenseIntro") : `Flipleaf ${VERSION} · © 2026 Vasileios Tripolidis · MIT License`;
+  box.querySelector("p").textContent = requireAccept ? t("licenseIntro") : `Flipleaf ${VERSION} · © 2026 Vasileios Tripolidis · All rights reserved`;
   const [tabE, tabN] = box.querySelectorAll("[data-tab]");
   tabE.textContent = t("licenseTitle"); tabN.textContent = "Third-party notices";
   const pre = box.querySelector("pre");

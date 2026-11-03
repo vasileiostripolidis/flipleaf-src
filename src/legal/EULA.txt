@@ -1,18 +1,18 @@
 FLIPLEAF — END USER LICENSE AGREEMENT
-Version 1.2 — effective 3 November 2026
+Version 1.3 — effective 3 November 2026
 
-Copyright (c) 2026 Vasileios Tripolidis. All rights reserved, except as granted below.
+Copyright (c) 2026 Vasileios Tripolidis. All rights reserved.
 
 Please read this agreement carefully. By installing, copying or using Flipleaf ("the Software") you agree to these terms. If you do not agree, do not install or use the Software.
 
 1. LICENSE
 You may install and use the Software free of charge, on any number of devices, for personal, educational, commercial and government purposes. No registration, account, activation or subscription is required. The Software is currently made available free of charge and without any payment or monetisation. Some features ("Pro" features) may require a paid license in future versions; any such change will be announced and will apply only to those future versions.
 
-2. OPEN SOURCE
-The source code of the Software is published at https://github.com/vasileiostripolidis/flipleaf under the MIT License. Nothing in this agreement limits any right you have under the MIT License or under the licenses of the third-party components listed in section 4. If this agreement and one of those licenses conflict, that license prevails for the part it covers.
+2. OWNERSHIP AND RESTRICTIONS
+The Software is licensed, not sold. The Software and all copies, including its source code, object code, design, graphics, text, name and logo, are the exclusive property of Vasileios Tripolidis, who reserves all rights not expressly granted in section 1. No right to the source code is granted. Except as expressly permitted by applicable law that cannot be excluded by contract, you may not: (a) copy the Software, other than installing it for your own use and making backup copies; (b) modify, adapt, translate or create derivative works of it; (c) decompile, disassemble or reverse engineer it; (d) sell, rent, lend, sublicense, publish or distribute it, or offer it as a service. You may share the official download page (https://github.com/vasileiostripolidis/flipleaf/releases) with others; anyone who installs the Software from it accepts this agreement. Nothing in this agreement limits the rights given by the licenses of the third-party components listed in section 4, for those components.
 
 3. NAME AND LOGO
-"Flipleaf" and the Flipleaf leaf logo identify the official Software. The MIT License does not grant rights to them. You may use the name to refer to the Software truthfully (for example in a review, a tutorial or a "works with Flipleaf" statement). You may not use the name or logo for a modified version, a different product or a service, or in a way that suggests endorsement, without written permission. The Software is an independent product. It is not affiliated with, endorsed by or sponsored by any other software vendor. Other product names and trademarks belong to their respective owners.
+"Flipleaf" and the Flipleaf leaf logo identify the official Software and belong to Vasileios Tripolidis. You may use the name to refer to the Software truthfully (for example in a review, a tutorial or a "works with Flipleaf" statement). You may not use the name or logo for a modified version, a different product or a service, or in a way that suggests endorsement, without written permission. The Software is an independent product. It is not affiliated with, endorsed by or sponsored by any other software vendor. Other product names and trademarks belong to their respective owners.
 
 4. THIRD-PARTY COMPONENTS
 The Software includes open-source components, each under its own license, including: Mozilla PDF.js (Apache License 2.0), PDFium (BSD-3-Clause and related licenses), the EmbedPDF PDFium build (MIT), Tauri (MIT or Apache License 2.0), Lucide icons (ISC), fonts derived from the Liberation Fonts, and the signature fonts Great Vibes, Dancing Script, Caveat and EB Garamond (SIL Open Font License 1.1). The full list and license texts are in the file THIRD-PARTY-NOTICES, available from Help > License & third-party notices.
@@ -45,7 +45,7 @@ This agreement ends automatically if you break its terms. When it ends, stop usi
 This agreement is governed by the laws of Greece. The courts of Greece have jurisdiction. This does not deprive a consumer of the protection of mandatory rules or of the courts of the country where the consumer lives.
 
 14. GENERAL
-If any provision of this agreement is found invalid or unenforceable, it will be limited to the minimum extent necessary and the rest of the agreement remains in effect. Failure to enforce a provision is not a waiver. This agreement, together with the licenses referred to in sections 2 and 4, is the entire agreement about the Software.
+If any provision of this agreement is found invalid or unenforceable, it will be limited to the minimum extent necessary and the rest of the agreement remains in effect. Failure to enforce a provision is not a waiver. This agreement, together with the third-party licenses referred to in section 4, is the entire agreement about the Software.
 
 15. CONTACT
 Questions about this agreement: https://github.com/vasileiostripolidis/flipleaf/issues
@@ -53,20 +53,20 @@ Questions about this agreement: https://github.com/vasileiostripolidis/flipleaf/
 -------------------------------------------------------------------------------
 
 FLIPLEAF — ΣΥΜΦΩΝΙΑ ΑΔΕΙΑΣ ΧΡΗΣΗΣ ΤΕΛΙΚΟΥ ΧΡΗΣΤΗ
-Έκδοση 1.2 — ισχύει από 3 Νοεμβρίου 2026
+Έκδοση 1.3 — ισχύει από 3 Νοεμβρίου 2026
 
-Πνευματικά δικαιώματα (c) 2026 Βασίλειος Τριπολίδης. Με την επιφύλαξη παντός δικαιώματος, εκτός από όσα παραχωρούνται παρακάτω.
+Πνευματικά δικαιώματα (c) 2026 Βασίλειος Τριπολίδης. Με την επιφύλαξη παντός δικαιώματος.
 
 Διάβασε προσεκτικά αυτή τη συμφωνία. Με την εγκατάσταση, αντιγραφή ή χρήση του Flipleaf («το Λογισμικό») αποδέχεσαι τους όρους της. Αν δεν συμφωνείς, μην εγκαταστήσεις και μη χρησιμοποιήσεις το Λογισμικό.
 
 1. ΑΔΕΙΑ
 Μπορείς να εγκαταστήσεις και να χρησιμοποιήσεις το Λογισμικό δωρεάν, σε όσες συσκευές θέλεις, για προσωπική, εκπαιδευτική, επαγγελματική και δημόσια χρήση. Δεν απαιτείται εγγραφή, λογαριασμός, ενεργοποίηση ή συνδρομή. Το Λογισμικό διατίθεται προς το παρόν δωρεάν, χωρίς καμία πληρωμή ή εμπορική εκμετάλλευση. Ορισμένες λειτουργίες («Pro») ενδέχεται να απαιτούν άδεια επί πληρωμή σε μελλοντικές εκδόσεις. Κάθε τέτοια αλλαγή θα ανακοινωθεί και θα ισχύει μόνο για εκείνες τις μελλοντικές εκδόσεις.
 
-2. ΑΝΟΙΧΤΟΣ ΚΩΔΙΚΑΣ
-Ο πηγαίος κώδικας του Λογισμικού δημοσιεύεται στο https://github.com/vasileiostripolidis/flipleaf με την άδεια MIT. Τίποτα σε αυτή τη συμφωνία δεν περιορίζει δικαιώματα που έχεις βάσει της άδειας MIT ή των αδειών των στοιχείων τρίτων της ενότητας 4. Σε περίπτωση σύγκρουσης, για το τμήμα που καλύπτει υπερισχύει η αντίστοιχη άδεια.
+2. ΚΥΡΙΟΤΗΤΑ ΚΑΙ ΠΕΡΙΟΡΙΣΜΟΙ
+Το Λογισμικό παραχωρείται με άδεια χρήσης και δεν πωλείται. Το Λογισμικό και όλα τα αντίγραφά του, συμπεριλαμβανομένων του πηγαίου κώδικα, του εκτελέσιμου κώδικα, του σχεδιασμού, των γραφικών, των κειμένων, του ονόματος και του λογοτύπου, αποτελούν αποκλειστική ιδιοκτησία του Βασίλειου Τριπολίδη, ο οποίος διατηρεί κάθε δικαίωμα που δεν παραχωρείται ρητά στην ενότητα 1. Δεν παραχωρείται κανένα δικαίωμα στον πηγαίο κώδικα. Εκτός αν το επιτρέπει ρητά ο νόμος με διατάξεις που δεν μπορούν να αποκλειστούν με σύμβαση, δεν επιτρέπεται: (α) η αντιγραφή του Λογισμικού, πέρα από την εγκατάστασή του για δική σου χρήση και τη δημιουργία αντιγράφων ασφαλείας· (β) η τροποποίηση, προσαρμογή, μετάφραση ή δημιουργία παράγωγων έργων· (γ) η αποσυμπίληση, αποσυναρμολόγηση ή αντίστροφη μηχανική· (δ) η πώληση, εκμίσθωση, δανεισμός, παραχώρηση υποάδειας, δημοσίευση ή διανομή του, ή η προσφορά του ως υπηρεσίας. Μπορείς να μοιράζεσαι την επίσημη σελίδα λήψης (https://github.com/vasileiostripolidis/flipleaf/releases) με άλλους· όποιος εγκαθιστά το Λογισμικό από εκεί αποδέχεται αυτή τη συμφωνία. Τίποτα σε αυτή τη συμφωνία δεν περιορίζει τα δικαιώματα που δίνουν οι άδειες των στοιχείων τρίτων της ενότητας 4, για τα στοιχεία αυτά.
 
 3. ΟΝΟΜΑ ΚΑΙ ΛΟΓΟΤΥΠΟ
-Το όνομα «Flipleaf» και το λογότυπο με το φύλλο χαρακτηρίζουν το επίσημο Λογισμικό. Η άδεια MIT δεν παραχωρεί δικαιώματα σε αυτά. Μπορείς να αναφέρεις το όνομα με ακρίβεια για το Λογισμικό (π.χ. σε κριτική, οδηγό ή δήλωση «λειτουργεί με το Flipleaf»). Δεν επιτρέπεται η χρήση του ονόματος ή του λογοτύπου για τροποποιημένη έκδοση, άλλο προϊόν ή υπηρεσία, ή με τρόπο που υπονοεί έγκριση, χωρίς γραπτή άδεια. Το Λογισμικό είναι ανεξάρτητο προϊόν. Δεν συνδέεται με, δεν εγκρίνεται και δεν χρηματοδοτείται από καμία άλλη εταιρεία λογισμικού. Άλλες ονομασίες προϊόντων και εμπορικά σήματα ανήκουν στους δικαιούχους τους.
+Το όνομα «Flipleaf» και το λογότυπο με το φύλλο χαρακτηρίζουν το επίσημο Λογισμικό και ανήκουν στον Βασίλειο Τριπολίδη. Μπορείς να αναφέρεις το όνομα με ακρίβεια για το Λογισμικό (π.χ. σε κριτική, οδηγό ή δήλωση «λειτουργεί με το Flipleaf»). Δεν επιτρέπεται η χρήση του ονόματος ή του λογοτύπου για τροποποιημένη έκδοση, άλλο προϊόν ή υπηρεσία, ή με τρόπο που υπονοεί έγκριση, χωρίς γραπτή άδεια. Το Λογισμικό είναι ανεξάρτητο προϊόν. Δεν συνδέεται με, δεν εγκρίνεται και δεν χρηματοδοτείται από καμία άλλη εταιρεία λογισμικού. Άλλες ονομασίες προϊόντων και εμπορικά σήματα ανήκουν στους δικαιούχους τους.
 
 4. ΣΤΟΙΧΕΙΑ ΤΡΙΤΩΝ
 Το Λογισμικό περιλαμβάνει στοιχεία ανοιχτού κώδικα, το καθένα με τη δική του άδεια, μεταξύ των οποίων: Mozilla PDF.js (Apache License 2.0), PDFium (BSD-3-Clause και σχετικές άδειες), η έκδοση PDFium του EmbedPDF (MIT), Tauri (MIT ή Apache License 2.0), εικονίδια Lucide (ISC), γραμματοσειρές που προέρχονται από τις Liberation Fonts και οι γραμματοσειρές υπογραφών Great Vibes, Dancing Script, Caveat και EB Garamond (SIL Open Font License 1.1). Η πλήρης λίστα και τα κείμενα των αδειών βρίσκονται στο αρχείο THIRD-PARTY-NOTICES, διαθέσιμο από Βοήθεια > Άδεια χρήσης & λογισμικό τρίτων.
@@ -99,7 +99,7 @@ FLIPLEAF — ΣΥΜΦΩΝΙΑ ΑΔΕΙΑΣ ΧΡΗΣΗΣ ΤΕΛΙΚΟΥ ΧΡΗΣ�
 Η συμφωνία διέπεται από το ελληνικό δίκαιο. Αρμόδια είναι τα ελληνικά δικαστήρια. Αυτό δεν στερεί από τον καταναλωτή την προστασία των αναγκαστικού δικαίου διατάξεων ή των δικαστηρίων της χώρας όπου διαμένει.
 
 14. ΓΕΝΙΚΑ
-Αν κάποιος όρος της συμφωνίας κριθεί άκυρος ή ανεφάρμοστος, περιορίζεται στον ελάχιστο αναγκαίο βαθμό και η υπόλοιπη συμφωνία εξακολουθεί να ισχύει. Η μη άσκηση ενός δικαιώματος δεν συνιστά παραίτηση από αυτό. Η συμφωνία αυτή, μαζί με τις άδειες των ενοτήτων 2 και 4, αποτελεί το σύνολο της συμφωνίας για το Λογισμικό.
+Αν κάποιος όρος της συμφωνίας κριθεί άκυρος ή ανεφάρμοστος, περιορίζεται στον ελάχιστο αναγκαίο βαθμό και η υπόλοιπη συμφωνία εξακολουθεί να ισχύει. Η μη άσκηση ενός δικαιώματος δεν συνιστά παραίτηση από αυτό. Η συμφωνία αυτή, μαζί με τις άδειες τρίτων της ενότητας 4, αποτελεί το σύνολο της συμφωνίας για το Λογισμικό.
 
 15. ΕΠΙΚΟΙΝΩΝΙΑ
 Ερωτήσεις για τη συμφωνία: https://github.com/vasileiostripolidis/flipleaf/issues

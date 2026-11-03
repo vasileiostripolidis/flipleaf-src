@@ -1,9 +1,10 @@
 [package]
 name = "flipleaf"
-version = "1.8.1"
+version = "1.9.0"
 description = "Flipleaf: a feather-light PDF reader"
 authors = ["Vasileios Tripolidis"]
-license = "MIT"
+license = "LicenseRef-Proprietary"
+publish = false
 edition = "2021"
 
 [lib]
@@ -21,6 +22,10 @@ tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 urlencoding = "2"
+
+[features]
+# Microsoft Store build: updates come from the Store, so the built-in updater is left out.
+store = []
 
 [profile.release]
 codegen-units = 1

@@ -1,3 +1,5 @@
+> **Private source repository.** The public project page is generated from `public/README.md` and published to [vasileiostripolidis/flipleaf](https://github.com/vasileiostripolidis/flipleaf) by the *Website* workflow; releases are published there by the *Release* workflow.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/banner-dark.png">
   <img src="./.github/assets/banner-light.png" alt="Flipleaf — the light, private PDF editor for every desktop" width="100%">
@@ -13,7 +15,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/stack-dark.png">
-    <img src="./.github/assets/stack-light.png" height="34" alt="Tauri 2 · Rust · PDF.js · PDFium WASM · Vanilla JS · MIT">
+    <img src="./.github/assets/stack-light.png" height="34" alt="Tauri 2 · Rust · PDF.js · PDFium WASM · Free · All rights reserved">
   </picture>
 </p>
 
@@ -270,8 +272,8 @@ src-tauri/                 native shell
 
 No accounts, analytics, crash reporting or ads. Documents, settings and signatures stay on the device. → [PRIVACY.md](legal/PRIVACY.md)
 
-Code: [MIT](LICENSE) · End-user terms: [EULA.md](legal/EULA.md) · Security: [SECURITY.md](.github/SECURITY.md) · Third-party notices: [THIRD-PARTY-NOTICES.txt](legal/THIRD-PARTY-NOTICES.txt).
-The "Flipleaf" name and logo are reserved (EULA §3). Third-party components: PDF.js (Apache-2.0), PDFium (BSD-3-Clause), EmbedPDF build (MIT), Tauri & Rust crates (MIT/Apache-2.0), Lucide (ISC), fonts (OFL-1.1).
+License: [All rights reserved](LICENSE) · End-user terms: [EULA.md](legal/EULA.md) · Security: [SECURITY.md](.github/SECURITY.md) · Third-party notices: [THIRD-PARTY-NOTICES.txt](legal/THIRD-PARTY-NOTICES.txt).
+© Vasileios Tripolidis. The application, its code, name and logo are the property of the author (EULA §2–3). Third-party components: PDF.js (Apache-2.0), PDFium (BSD-3-Clause), EmbedPDF build (MIT), Tauri & Rust crates (MIT/Apache-2.0), Lucide (ISC), fonts (OFL-1.1).
 
 <br>
 
@@ -289,7 +291,7 @@ The "Flipleaf" name and logo are reserved (EULA §3). Third-party components: PD
 - **Τεχνολογία:** Tauri 2 (Rust) · PDF.js · PDFium σε WebAssembly · vanilla JS
 - **Ενημερώσεις:** μία φορά τον μήνα η εφαρμογή ελέγχει για νέα έκδοση και, αν υπάρχει, την εγκαθιστά με ένα κλικ· από *Βοήθεια → Έλεγχος για ενημερώσεις…* οποιαδήποτε στιγμή
 - **Απόρρητο:** τα αρχεία δεν φεύγουν ποτέ από τη συσκευή
-- **Άδεια:** κώδικας MIT · όροι χρήσης [EULA.md](legal/EULA.md)
+- **Άδεια:** δωρεάν χρήση · με την επιφύλαξη παντός δικαιώματος · όροι χρήσης [EULA.md](legal/EULA.md)
 
 <br>
 

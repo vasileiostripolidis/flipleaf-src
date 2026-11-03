@@ -318,8 +318,17 @@ mod updates {
         !cfg!(target_os = "linux") || std::env::var_os("APPIMAGE").is_some()
     }
 
+    /// "store" for the Microsoft Store build (updates come from the Store), "direct" otherwise.
+    #[tauri::command]
+    pub fn update_channel() -> &'static str {
+        if cfg!(feature = "store") { "store" } else { "direct" }
+    }
+
     #[tauri::command]
     pub async fn check_update(app: AppHandle, pending: State<'_, Pending>) -> Result<Option<Info>, String> {
+        if cfg!(feature = "store") {
+            return Ok(None);
+        }
         let update = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
         Ok(update.map(|u| {
             let info = Info { version: u.version.clone(), notes: u.body.clone(), can_install: can_install() };
@@ -355,10 +364,12 @@ pub fn run() {
         files.queue(PathBuf::from(arg));
     }
 
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(not(feature = "store"))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(files)
         .manage(updates::Pending::default())
         .setup(|app| {
@@ -378,6 +389,7 @@ pub fn run() {
             forget_recent,
             print_window,
             open_url,
+            updates::update_channel,
             updates::check_update,
             updates::install_update
         ])

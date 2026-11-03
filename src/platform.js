@@ -154,6 +154,9 @@ export function quit() {
 
 /* ---------------------------------------------------------------- updates (desktop only) */
 
+/** "store" (Microsoft Store: updates come from the Store), "direct" (built-in updater) or "web". */
+export const updateChannel = isDesktop ? invoke("update_channel").catch(() => "direct") : Promise.resolve("web");
+
 /** Resolves to { version, notes, canInstall } when a newer signed release exists, else null. */
 export function checkUpdate() { return invoke("check_update"); }
 

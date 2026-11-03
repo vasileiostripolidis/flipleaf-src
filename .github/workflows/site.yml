@@ -1,0 +1,21 @@
+# Publishes the web version to the public repository's website on every change to src/,
+# and the public project page (README, license, legal texts) on every change to those.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths: ["src/**", "public/**", "legal/**", "LICENSE", ".github/assets/**", ".github/SECURITY.md", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Project page
+        run: .github/scripts/publish_public.sh
+      - name: Web version
+        run: .github/scripts/publish_site.sh

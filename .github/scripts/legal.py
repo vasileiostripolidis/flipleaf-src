@@ -58,8 +58,8 @@ def notices():
         "FLIPLEAF — THIRD-PARTY NOTICES",
         f"Generated {datetime.date.today().isoformat()} by .github/scripts/legal.py",
         "",
-        "Flipleaf is Copyright (c) 2026 Vasileios Tripolidis and is released under the MIT License.",
-        "It includes the open-source components below. Each remains under its own license;",
+        "Flipleaf is Copyright (c) 2026 Vasileios Tripolidis. All rights reserved.",
+        "It includes the third-party components below. Each remains under its own license;",
         "nothing in the Flipleaf license agreement limits the rights these licenses give you.",
         "",
     ]
