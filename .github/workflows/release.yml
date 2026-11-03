@@ -135,7 +135,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: release
           pattern: "{Windows,macOS,Linux}"
           merge-multiple: true
 
@@ -143,13 +143,25 @@ jobs:
         run: |
           V=$(node -p "require('./src-tauri/tauri.conf.json').version")
           echo "V=$V" >> "$GITHUB_ENV"
-          python3 .github/scripts/release_files.py "$V" dist
+          python3 .github/scripts/release_files.py "$V" release
 
       - name: Publish the release (public repository)
         run: |
+          # a re-run of the same version replaces the files of the existing release
+          if gh release view "v$V" --repo vasileiostripolidis/flipleaf >/dev/null 2>&1; then
+            gh release upload "v$V" release/Flipleaf-$V-{Windows.exe,macOS.dmg,Linux.AppImage} --repo vasileiostripolidis/flipleaf --clobber
+            gh release edit "v$V" --repo vasileiostripolidis/flipleaf --notes-file release/body.md
+          else
           gh release create "v$V" \
-            "dist/Flipleaf-$V-Windows.exe" "dist/Flipleaf-$V-macOS.dmg" "dist/Flipleaf-$V-Linux.AppImage" \
-            --repo vasileiostripolidis/flipleaf --title "Flipleaf v$V" --notes-file dist/body.md --latest
+            "release/Flipleaf-$V-Windows.exe" "release/Flipleaf-$V-macOS.dmg" "release/Flipleaf-$V-Linux.AppImage" \
+            --repo vasileiostripolidis/flipleaf --title "Flipleaf v$V" --notes-file release/body.md --latest
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
 
       - name: Publish the website with the new updater files
-        run: .github/scripts/publish_site.sh dist
+        run: .github/scripts/publish_site.sh release
