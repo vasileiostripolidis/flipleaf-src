@@ -5,7 +5,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["src/**", "public/**", "legal/**", "LICENSE", ".github/assets/**", ".github/SECURITY.md", ".github/workflows/site.yml"]
+    paths: ["src/**", "public/**", "legal/**", "LICENSE", ".github/assets/**", ".github/SECURITY.md", ".github/workflows/site.yml", ".github/scripts/protect.mjs", "package.json", "package-lock.json"]
   workflow_dispatch:
 
 jobs:
@@ -15,6 +15,10 @@ jobs:
       PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
       - name: Project page
         run: .github/scripts/publish_public.sh
       - name: Web version
