@@ -44,7 +44,7 @@ Flipleaf is a cross-platform PDF reader and editor: a small native shell (Tauri 
 <td width="33%" valign="top">
 
 #### Read
-Automatic, signed updates. Virtualized rendering, book and continuous layouts, thumbnails and outline, diacritic-insensitive search, presentation mode, read-aloud, and **light / dark themes** that follow the system or can be switched with one click.
+Automatic, signed updates. Virtualized rendering, book and continuous layouts, thumbnails and outline, diacritic-insensitive search, presentation mode, read-aloud, and **light / dark themes** that follow the system or can be switched with one click. English and Greek interface, switchable from *View → Language*.
 
 </td>
 <td width="33%" valign="top">
@@ -64,7 +64,7 @@ Type your name (4 script styles), draw, import a photo of your real signature wi
 <td valign="top">
 
 #### Organize
-Reorder, rotate, delete and insert pages. Combine, split, extract, crop. Add headers, footers, page numbers, watermarks and Bates numbering.
+Reorder, rotate, delete and insert pages. Combine files in the order you choose, split, extract, crop. Add headers, footers, page numbers, watermarks and Bates numbering.
 
 </td>
 <td valign="top">

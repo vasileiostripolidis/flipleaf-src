@@ -9,7 +9,7 @@ addStrings({
   crop: "Crop pages…", headerFooter: "Header, footer & page numbers…", watermark: "Watermark…", bates: "Bates numbering…",
   orgRotL: "Rotate left", orgRotR: "Rotate right", orgDelete: "Delete", orgBlank: "Insert blank page", orgInsert: "Insert from file", orgExtract: "Extract",
   orgSplit: "Split", orgApply: "Apply changes", orgHint: "Click to select (Ctrl/Shift for many) · drag to reorder", orgSelected: "{n} selected",
-  orgEmpty: "A document needs at least one page.", combined: "Combined document", splitEvery: "Split every", splitPages: "pages", splitDone: "{n} files saved.",
+  orgEmpty: "A document needs at least one page.", combined: "Combined document", combineOrder: "Set the order: drag a file, or use the arrows. File 1 comes first.", combineAdd: "Add files…", combineCurrent: "open document", combineGo: "Combine", moveUp: "Move up", moveDown: "Move down", combinePages: "{n} pages", splitEvery: "Split every", splitPages: "pages", splitDone: "{n} files saved.",
   extractWhich: "Pages to extract", extractSep: "Save each page as a separate file",
   // crop
   cropTop: "Top", cropBottom: "Bottom", cropLeft: "Left", cropRight: "Right", cropUnit: "mm", applyTo: "Apply to", allPages: "All pages",
@@ -52,7 +52,7 @@ addStrings({
   crop: "Περικοπή σελίδων…", headerFooter: "Κεφαλίδα, υποσέλιδο & αρίθμηση…", watermark: "Υδατογράφημα…", bates: "Αρίθμηση Bates…",
   orgRotL: "Περιστροφή αριστερά", orgRotR: "Περιστροφή δεξιά", orgDelete: "Διαγραφή", orgBlank: "Κενή σελίδα", orgInsert: "Εισαγωγή από αρχείο", orgExtract: "Εξαγωγή",
   orgSplit: "Διαχωρισμός", orgApply: "Εφαρμογή αλλαγών", orgHint: "Κλικ για επιλογή (Ctrl/Shift για πολλές) · σύρε για αλλαγή σειράς", orgSelected: "{n} επιλεγμένες",
-  orgEmpty: "Το έγγραφο πρέπει να έχει τουλάχιστον μία σελίδα.", combined: "Συνδυασμένο έγγραφο", splitEvery: "Διαχωρισμός ανά", splitPages: "σελίδες", splitDone: "Αποθηκεύτηκαν {n} αρχεία.",
+  orgEmpty: "Το έγγραφο πρέπει να έχει τουλάχιστον μία σελίδα.", combined: "Συνδυασμένο έγγραφο", combineOrder: "Όρισε τη σειρά: σύρε ένα αρχείο ή χρησιμοποίησε τα βελάκια. Το αρχείο 1 μπαίνει πρώτο.", combineAdd: "Προσθήκη αρχείων…", combineCurrent: "ανοιχτό έγγραφο", combineGo: "Συνδυασμός", moveUp: "Μετακίνηση πάνω", moveDown: "Μετακίνηση κάτω", combinePages: "{n} σελίδες", splitEvery: "Διαχωρισμός ανά", splitPages: "σελίδες", splitDone: "Αποθηκεύτηκαν {n} αρχεία.",
   extractWhich: "Σελίδες για εξαγωγή", extractSep: "Κάθε σελίδα σε ξεχωριστό αρχείο",
   cropTop: "Πάνω", cropBottom: "Κάτω", cropLeft: "Αριστερά", cropRight: "Δεξιά", cropUnit: "mm", applyTo: "Εφαρμογή σε", allPages: "Όλες τις σελίδες",
   currentPage: "Τρέχουσα σελίδα", pageRange: "Σελίδες (π.χ. 1-3, 5)",

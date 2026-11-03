@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.7.1";
+const VERSION = "1.8.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -886,6 +886,25 @@ darkQuery.addEventListener("change", updateThemeButton);
 $("btnTheme").onclick = () => setTheme(isDark() ? "light" : "dark");
 setTheme(store.get("theme", "system"));
 
+/* ================================================================== language */
+
+async function setLanguage(lang) {
+  if (lang === store.get("lang", "system")) return;
+  if (doc.dirty) return toast(t("langSaveFirst"), 5000);
+  if (doc.pdf && !doc.path) {
+    const p = document.createElement("p"); p.textContent = t("langReload");
+    const r = await dialog({ title: t("language"), body: p, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("ok"), value: "ok", kind: "primary" }] });
+    if (r !== "ok") return;
+  }
+  store.set("lang", lang);
+  if (doc.path) store.set("reopen", doc.path); // reopened after the reload
+  location.reload();
+}
+{
+  const reopen = store.get("reopen", null);
+  if (reopen) { store.set("reopen", null); openPath(reopen).catch(() => {}); }
+}
+
 /* ================================================================== updates */
 
 // Desktop only. Never forced: the user can always choose "Later" or skip a version.
@@ -988,6 +1007,7 @@ const MENUS = {
     { label: "showSidebar", key: "F4", icon: "panel-left", check: !$("sidebar").hidden, run: () => toggleSidebar(), when: hasDoc },
     "-",
     { label: "presentation", key: mod + "L", icon: "presentation", run: () => present(true), when: hasDoc },
+    { label: "language", icon: "languages", sub: () => [["system", t("langSystem")], ["en", "English"], ["el", "Ελληνικά"]].map(([v, text]) => ({ text, check: store.get("lang", "system") === v, run: () => setLanguage(v) })) },
     { label: "theme", icon: "moon", sub: () => ["system", "light", "dark"].map((v) => ({ label: "theme" + v[0].toUpperCase() + v.slice(1), check: currentTheme() === v, run: () => setTheme(v) })) },
     { label: "nightMode", key: "N", icon: "moon", check: document.body.classList.contains("night"), run: () => setNight(!document.body.classList.contains("night")) },
     { label: "readAloud", key: mod + shift + "Y", icon: "volume-2", run: () => readAloud(), when: () => hasDoc() && !!speech },

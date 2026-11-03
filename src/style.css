@@ -368,3 +368,11 @@ body.presenting .pdfViewer .page { box-shadow: none; }
 
 /* update notes */
 .upnotes { white-space: pre-wrap; max-height: 220px; overflow: auto; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 12.5px; }
+
+/* combine files: ordered list */
+.clist { list-style: none; margin: 10px 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow: auto; }
+.citem { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: grab; }
+.citem .cnum { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 12px; }
+.citem .cname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.citem.over { box-shadow: 0 -3px 0 var(--brand); }
+.citem.dragging { opacity: .4; }

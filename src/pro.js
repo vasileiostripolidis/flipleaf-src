@@ -459,15 +459,52 @@ export function installPro(app) {
   }
 
   const combine = gate("combine", async () => {
-    const list = await pickFiles("application/pdf,.pdf", true);
-    if (!list.length) return;
+    // Files to combine, in order. The open document (if any) starts the list; the user can remove it.
+    const items = [];
+    const addFiles = async () => {
+      for (const f of await pickFiles("application/pdf,.pdf", true)) items.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+    };
+    if (app.doc.pdf) items.push({ name: app.doc.name, bytes: await bytesNow(), password: pw(), current: true });
+    await addFiles();
+    if (items.length < 2 && !items.some((x) => !x.current)) return;
+
+    const box = html(`<p class="small muted">${t("combineOrder")}</p><ol class="clist"></ol>
+      <button type="button" class="btn sm secondary" data-add>${icon("plus", 16)}<span>${t("combineAdd")}</span></button>`);
+    const list = box.querySelector(".clist");
+    const move = (from, to) => { const [x] = items.splice(from, 1); items.splice(to, 0, x); render(); };
+    let dragFrom = -1;
+    function render() {
+      list.replaceChildren(...items.map((it, i) => {
+        const li = el("li", null, { className: "citem", draggable: true });
+        li.innerHTML = `<span class="cnum">${i + 1}</span>${icon("file-text", 16)}<span class="cname"></span>
+          <button type="button" class="btn icon sm" data-m="up" title="${t("moveUp")}"${i === 0 ? " disabled" : ""}>${icon("chevron-up", 16)}</button>
+          <button type="button" class="btn icon sm" data-m="down" title="${t("moveDown")}"${i === items.length - 1 ? " disabled" : ""}>${icon("chevron-down", 16)}</button>
+          <button type="button" class="btn icon sm" data-m="del" title="${t("orgDelete")}">${icon("x", 16)}</button>`;
+        li.querySelector(".cname").textContent = it.current ? `${it.name} (${t("combineCurrent")})` : it.name;
+        li.querySelector('[data-m="up"]').onclick = () => move(i, i - 1);
+        li.querySelector('[data-m="down"]').onclick = () => move(i, i + 1);
+        li.querySelector('[data-m="del"]').onclick = () => { items.splice(i, 1); render(); };
+        li.ondragstart = (e) => { dragFrom = i; li.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; };
+        li.ondragend = () => li.classList.remove("dragging");
+        li.ondragover = (e) => { e.preventDefault(); li.classList.add("over"); };
+        li.ondragleave = () => li.classList.remove("over");
+        li.ondrop = (e) => { e.preventDefault(); if (dragFrom >= 0 && dragFrom !== i) move(dragFrom, i); dragFrom = -1; };
+        return li;
+      }));
+      const ok = document.querySelector('#dlgFoot button[value="ok"]');
+      if (ok) ok.disabled = items.length < 2;
+    }
+    box.querySelector("[data-add]").onclick = async () => { await addFiles(); render(); };
+    const answer = ask(t("combine").replace("…", ""), box, t("combineGo"));
+    render();
+    if (await answer !== "ok" || items.length < 2) return;
+
     const overlay = busy(t("working"));
     try {
-      const all = await Promise.all(list.map(async (f) => new Uint8Array(await f.arrayBuffer())));
-      const base = await PdfDoc.open(all[0]);
+      const base = await PdfDoc.open(items[0].bytes, items[0].password);
       try {
-        for (const b of all.slice(1)) {
-          const src = await PdfDoc.open(b);
+        for (const it of items.slice(1)) {
+          const src = await PdfDoc.open(it.bytes, it.password);
           importPages(base, src, allIndexes(src.count), base.count);
           src.close();
         }
