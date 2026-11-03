@@ -80,5 +80,6 @@ jobs:
 
             Offline · no telemetry · [Privacy](https://github.com/vasileiostripolidis/flipleaf/blob/main/PRIVACY.md) · [License](https://github.com/vasileiostripolidis/flipleaf/blob/main/EULA.md)
           releaseDraft: true
+          updaterJsonPreferNsis: true
           prerelease: false
           args: ${{ matrix.args }}
