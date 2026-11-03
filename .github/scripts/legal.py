@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Builds the legal files shipped with Flipleaf.
 
-Run from the repository root after changing EULA.md or updating dependencies:
-    python3 scripts/legal.py
+Run from the repository root after changing legal/EULA.md or updating dependencies:
+    python3 .github/scripts/legal.py
 
 Outputs
   src/legal/EULA.txt                 shown in the app (first run, Help menu)
   src/legal/THIRD-PARTY-NOTICES.txt  shown in the app and shipped with every build
-  THIRD-PARTY-NOTICES.txt            same file at the repository root
+  legal/THIRD-PARTY-NOTICES.txt      same file in the repository
   src-tauri/installer/EULA.rtf       license page of the Windows installers (accept to continue)
 """
 import json, pathlib, subprocess, datetime
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 VENDOR = ROOT / "src" / "vendor"
 OUT = ROOT / "src" / "legal"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ def notices():
     bar = "=" * 79
     parts = [
         "FLIPLEAF — THIRD-PARTY NOTICES",
-        f"Generated {datetime.date.today().isoformat()} by scripts/legal.py",
+        f"Generated {datetime.date.today().isoformat()} by .github/scripts/legal.py",
         "",
         "Flipleaf is Copyright (c) 2026 Vasileios Tripolidis and is released under the MIT License.",
         "It includes the open-source components below. Each remains under its own license;",
@@ -92,10 +92,10 @@ def rtf(text):
     return "{\\rtf1\\ansi\\ansicpg1253\\deff0{\\fonttbl{\\f0\\fnil\\fcharset161 Segoe UI;}}\\viewkind4\\uc1\\pard\\f0\\fs18 " + "".join(out) + "\\par}"
 
 
-eula = read(ROOT / "EULA.md")
+eula = read(ROOT / "legal" / "EULA.md")
 (OUT / "EULA.txt").write_text(eula + "\n", encoding="utf-8")
 n = notices()
 (OUT / "THIRD-PARTY-NOTICES.txt").write_text(n + "\n", encoding="utf-8")
-(ROOT / "THIRD-PARTY-NOTICES.txt").write_text(n + "\n", encoding="utf-8")
+(ROOT / "legal" / "THIRD-PARTY-NOTICES.txt").write_text(n + "\n", encoding="utf-8")
 (ROOT / "src-tauri" / "installer" / "EULA.rtf").write_text(rtf(eula), encoding="ascii")
 print("legal files written:", len(eula), "chars EULA,", n.count("\n"), "lines notices")

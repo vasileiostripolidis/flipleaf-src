@@ -1,25 +1,25 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.png">
-  <img src="docs/banner-light.png" alt="Flipleaf — the light, private PDF editor for every desktop" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/banner-dark.png">
+  <img src="./.github/assets/banner-light.png" alt="Flipleaf — the light, private PDF editor for every desktop" width="100%">
 </picture>
 
 <p align="center">
-  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="docs/btn-windows.png" height="52" alt="Download for Windows"></a>&nbsp;
-  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="docs/btn-macos.png" height="52" alt="Download for macOS"></a>&nbsp;
-  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="docs/btn-linux.png" height="52" alt="Download for Linux"></a>&nbsp;
-  <a href="https://vasileiostripolidis.github.io/flipleaf/"><img src="docs/btn-web.png" height="52" alt="Open in browser"></a>
+  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="./.github/assets/btn-windows.png" height="52" alt="Download for Windows"></a>&nbsp;
+  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="./.github/assets/btn-macos.png" height="52" alt="Download for macOS"></a>&nbsp;
+  <a href="https://github.com/vasileiostripolidis/flipleaf/releases/latest"><img src="./.github/assets/btn-linux.png" height="52" alt="Download for Linux"></a>&nbsp;
+  <a href="https://vasileiostripolidis.github.io/flipleaf/"><img src="./.github/assets/btn-web.png" height="52" alt="Open in browser"></a>
 </p>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/stack-dark.png">
-    <img src="docs/stack-light.png" height="34" alt="Tauri 2 · Rust · PDF.js · PDFium WASM · Vanilla JS · MIT">
+    <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/stack-dark.png">
+    <img src="./.github/assets/stack-light.png" height="34" alt="Tauri 2 · Rust · PDF.js · PDFium WASM · Vanilla JS · MIT">
   </picture>
 </p>
 
 <br>
 
-<p align="center"><img src="docs/showcase.png" width="92%" alt="Flipleaf in dark mode"></p>
+<p align="center"><img src="./.github/assets/showcase.png" width="92%" alt="Flipleaf in dark mode"></p>
 
 <br>
 
@@ -84,8 +84,8 @@ AES-256 encryption with permissions, true redaction that removes the content its
 
 <table>
 <tr>
-<td width="50%"><img src="docs/edit.png" alt="Content editing"></td>
-<td width="50%"><img src="docs/signature.png" alt="Signature studio"></td>
+<td width="50%"><img src="./.github/assets/edit.png" alt="Content editing"></td>
+<td width="50%"><img src="./.github/assets/signature.png" alt="Signature studio"></td>
 </tr>
 <tr>
 <td align="center"><sub><b>Edit PDF</b>: change the content itself, not just annotate it</sub></td>
@@ -93,7 +93,7 @@ AES-256 encryption with permissions, true redaction that removes the content its
 </tr>
 </table>
 
-<p align="center"><img src="docs/tools.png" width="80%" alt="All tools"></p>
+<p align="center"><img src="./.github/assets/tools.png" width="80%" alt="All tools"></p>
 <p align="center"><sub><b>All tools</b>: 25 document tools in one place</sub></p>
 
 <br>
@@ -101,8 +101,8 @@ AES-256 encryption with permissions, true redaction that removes the content its
 ## Architecture
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img src="docs/architecture-light.png" width="100%" alt="Architecture: web core (app.js, PDF.js, PDFium WASM, tools) talks over IPC to the Rust shell, which only touches allow-listed files">
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/architecture-dark.png">
+  <img src="./.github/assets/architecture-light.png" width="100%" alt="Architecture: web core (app.js, PDF.js, PDFium WASM, tools) talks over IPC to the Rust shell, which only touches allow-listed files">
 </picture>
 
 <details open>
@@ -133,7 +133,7 @@ AES-256 encryption with permissions, true redaction that removes the content its
 | Encryption | AES-256 through PDFium's standard security handler |
 | Redaction | Glyphs and images inside the marked area are removed from the content stream, not covered |
 
-Vulnerabilities: report privately, see [SECURITY.md](SECURITY.md).
+Vulnerabilities: report privately, see [SECURITY.md](.github/SECURITY.md).
 
 </details>
 
@@ -156,7 +156,7 @@ The same `src/` folder is deployed to GitHub Pages as an installable PWA. `platf
 | **Editing** | [PDFium](https://pdfium.googlesource.com/pdfium/) → WebAssembly ([@embedpdf/pdfium](https://www.npmjs.com/package/@embedpdf/pdfium)) |
 | **UI** | Vanilla ES modules · CSS custom properties (light/dark) · [Lucide](https://lucide.dev) icons · no framework, no bundler |
 | **Formats** | PDF · DOCX (own OOXML + ZIP writer) · PNG / JPEG · TXT · ZIP |
-| **Packaging** | NSIS + WiX MSI · DMG · AppImage · deb · rpm · PWA |
+| **Packaging** | NSIS · universal DMG · AppImage · PWA · signed auto-updates |
 | **CI/CD** | GitHub Actions + `tauri-action` (4-target matrix) · GitHub Pages |
 
 <br>
@@ -165,15 +165,14 @@ The same `src/` folder is deployed to GitHub Pages as an installable PWA. `platf
 
 | Platform | Package | First launch |
 |:--|:--|:--|
-| **Windows** 10 / 11 x64 | `…_x64-setup.exe` · `…_x64_en-US.msi` | SmartScreen → *More info* → *Run anyway* |
-| **macOS** 11+ Apple silicon | `…_aarch64.dmg` | Right-click → *Open*, or `xattr -cr /Applications/Flipleaf.app` |
-| **macOS** 11+ Intel | `…_x64.dmg` | Same as above |
-| **Linux** x64 (WebKitGTK 4.1) | `.AppImage` · `.deb` · `.rpm` | Ubuntu 22.04+, Debian 12+, Fedora 38+ |
+| **Windows** 10 / 11 | `Flipleaf-x.y.z-Windows.exe` | SmartScreen → *More info* → *Run anyway* |
+| **macOS** 11+ (Apple silicon & Intel) | `Flipleaf-x.y.z-macOS.dmg` | Right-click → *Open*, or `xattr -cr /Applications/Flipleaf.app` |
+| **Linux** x64 | `Flipleaf-x.y.z-Linux.AppImage` | Any distribution: `chmod +x` and run |
 | **Browser** | [Open the web app](https://vasileiostripolidis.github.io/flipleaf/) | Chrome, Edge, Firefox, Safari. Installable as a PWA |
 
 Builds are not code-signed yet, which is why the system asks once. Flipleaf registers as a handler for `.pdf`.
 
-**Updates:** Flipleaf checks for new versions and asks before installing (*Help → Check for updates…*). One click downloads, verifies and installs the signed update, then restarts. Turn automatic checks off in the Help menu. Linux `.deb` / `.rpm` installs get a notification with a download link. Settings and signatures are kept.
+**Updates:** Flipleaf checks for new versions and asks before installing (*Help → Check for updates…*). One click downloads, verifies and installs the signed update, then restarts. Turn automatic checks off in the Help menu. Settings and signatures are kept.
 
 <br>
 
@@ -189,21 +188,26 @@ npm run build      # installers → src-tauri/target/release/bundle/
 Requires [Node.js](https://nodejs.org) 18+ and [Rust](https://rustup.rs) stable. On Linux, also `libwebkit2gtk-4.1-dev librsvg2-dev`.
 Web only, no toolchain: `cd src && python3 -m http.server 8000`.
 
-**Release pipeline:** *Actions → Release → Run workflow* (optionally with *What's new* notes), or push a `v*` tag. It builds Windows x64, macOS arm64, macOS x64 and Linux x64 in parallel, signs the update packages, and publishes `latest.json` for the in-app updater in a draft release. Every push to `main` redeploys the web app.
+**Release pipeline:** *Actions → Release → Run workflow*, optionally with *What's new* notes. It builds Windows, a universal macOS app and a Linux AppImage in parallel, signs the update packages and publishes the release with exactly three downloads. The updater manifest (`latest.json`) and the macOS update package are deployed with the website under `/updates/`. Every push to `main` redeploys the web app.
 
 <details>
 <summary><b>Project layout</b></summary>
 <br>
 
 ```
+.github/
+├─ workflows/              release.yml (installers + updater) · pages.yml (website)
+├─ scripts/                legal.py (license files) · release_files.py (release text + latest.json)
+├─ assets/                 README artwork
+└─ SECURITY.md             how to report vulnerabilities
+legal/                     EULA.md · PRIVACY.md · THIRD-PARTY-NOTICES.txt
 src/                       web core, shared by desktop and web
 ├─ index.html · style.css  UI shell, light/dark themes
-├─ app.js                  viewer, menus, tools, find, print, presentation, TTS
+├─ app.js                  viewer, menus, tools, find, print, presentation, TTS, updates
 ├─ editor.js               content editing (PDFium page objects)
 ├─ signature.js            signature studio, store, placement
 ├─ pro.js · pro-strings.js 25 document tools
-├─ pdfium.js               PDFium loader, document wrapper, heap helpers
-├─ zip.js                  ZIP + DOCX writer
+├─ pdfium.js · zip.js      PDFium helpers · ZIP + DOCX writer
 ├─ platform.js             desktop ⇄ web adapter
 ├─ licensing.js            feature tiers (all free during launch)
 ├─ i18n.js · icons.js      EN/EL strings · inline Lucide SVGs
@@ -211,13 +215,10 @@ src/                       web core, shared by desktop and web
 ├─ legal/                  in-app EULA and notices
 └─ vendor/                 pdfjs · pdfium · fonts
 src-tauri/                 native shell
-├─ src/lib.rs              IPC commands, path allow-list, recent files, print
-├─ tauri.conf.json         window, CSP, file association, bundles
+├─ src/lib.rs              IPC commands, path allow-list, recent files, print, updater
+├─ tauri.conf.json         window, CSP, file association, bundles, updater key
 ├─ capabilities/           permission set
-└─ installer/              NSIS / WiX / DMG artwork, EULA.rtf, Greek strings
-scripts/legal.py           license and notice generator
-.github/workflows/         release.yml · pages.yml
-docs/                      README artwork
+└─ installer/              NSIS / DMG artwork, EULA.rtf, Greek strings
 ```
 
 </details>
@@ -267,9 +268,9 @@ docs/                      README artwork
 
 ## Privacy & license
 
-No accounts, analytics, crash reporting or ads. Documents, settings and signatures stay on the device. → [PRIVACY.md](PRIVACY.md)
+No accounts, analytics, crash reporting or ads. Documents, settings and signatures stay on the device. → [PRIVACY.md](legal/PRIVACY.md)
 
-Code: [MIT](LICENSE) · End-user terms: [EULA.md](EULA.md) · Security: [SECURITY.md](SECURITY.md) · Third-party notices: [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
+Code: [MIT](LICENSE) · End-user terms: [EULA.md](legal/EULA.md) · Security: [SECURITY.md](.github/SECURITY.md) · Third-party notices: [THIRD-PARTY-NOTICES.txt](legal/THIRD-PARTY-NOTICES.txt).
 The "Flipleaf" name and logo are reserved (EULA §3). Third-party components: PDF.js (Apache-2.0), PDFium (BSD-3-Clause), EmbedPDF build (MIT), Tauri & Rust crates (MIT/Apache-2.0), Lucide (ISC), fonts (OFL-1.1).
 
 <br>
@@ -278,7 +279,7 @@ The "Flipleaf" name and logo are reserved (EULA §3). Third-party components: PD
 
 **Flipleaf**: ελαφρύ πρόγραμμα ανάγνωσης και επεξεργασίας PDF για Windows, macOS, Linux και web. Λειτουργεί εντελώς offline, χωρίς λογαριασμό και χωρίς τηλεμετρία.
 
-- **Λήψη:** [Releases](https://github.com/vasileiostripolidis/flipleaf/releases/latest) → `…x64-setup.exe` (Windows), `…aarch64.dmg` (Mac Apple), `…x64.dmg` (Mac Intel), `.AppImage` / `.deb` / `.rpm` (Linux) · ή [έκδοση web](https://vasileiostripolidis.github.io/flipleaf/)
+- **Λήψη:** [Releases](https://github.com/vasileiostripolidis/flipleaf/releases/latest) → `…Windows.exe`, `…macOS.dmg` ή `…Linux.AppImage` · ή [έκδοση web](https://vasileiostripolidis.github.io/flipleaf/)
 - **Πρώτη εκκίνηση:** Windows → *Περισσότερες πληροφορίες → Εκτέλεση οπωσδήποτε* · Mac → δεξί κλικ → *Άνοιγμα*
 - **Λειτουργίες:**
   - ανάγνωση, φωτεινό/σκούρο θέμα, αναζήτηση, σχόλια
@@ -288,7 +289,7 @@ The "Flipleaf" name and logo are reserved (EULA §3). Third-party components: PD
 - **Τεχνολογία:** Tauri 2 (Rust) · PDF.js · PDFium σε WebAssembly · vanilla JS
 - **Ενημερώσεις:** η εφαρμογή ενημερώνει όταν υπάρχει νέα έκδοση και την εγκαθιστά με ένα κλικ
 - **Απόρρητο:** τα αρχεία δεν φεύγουν ποτέ από τη συσκευή
-- **Άδεια:** κώδικας MIT · όροι χρήσης [EULA.md](EULA.md)
+- **Άδεια:** κώδικας MIT · όροι χρήσης [EULA.md](legal/EULA.md)
 
 <br>
 

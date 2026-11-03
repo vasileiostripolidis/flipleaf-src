@@ -1,12 +1,12 @@
-# Builds Flipleaf installers for Windows, macOS and Linux.
-# Run it: push a tag like v1.0.0  (git tag v1.0.0 && git push --tags)
-# or press "Run workflow" in the Actions tab.
-# The installers appear as a draft Release; publish it to make the downloads public.
+# Builds and publishes a Flipleaf release.
+# Run it from Actions → Release → Run workflow (optionally with "What's new" notes).
+#
+# The release page shows exactly three downloads: Windows (.exe), macOS (universal .dmg)
+# and Linux (.AppImage). The in-app updater's files (latest.json and the macOS update
+# package) are published on the website under /updates/, not on the release page.
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       notes:
@@ -16,27 +16,29 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   build:
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
-          - platform: windows-latest
-            args: ""
-          - platform: macos-latest          # Apple Silicon
-            args: "--target aarch64-apple-darwin"
-          - platform: macos-latest          # Intel Macs
-            args: "--target x86_64-apple-darwin"
-          - platform: ubuntu-22.04
-            args: ""
+          - os: Windows
+            platform: windows-latest
+            args: "--bundles nsis"
+          - os: macOS
+            platform: macos-latest
+            args: "--target universal-apple-darwin --bundles app,dmg"
+          - os: Linux
+            platform: ubuntu-22.04
+            args: "--bundles appimage"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Linux build dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
@@ -47,7 +49,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -55,31 +57,77 @@ jobs:
 
       - run: npm ci
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build
+        run: npx tauri build ${{ matrix.args }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Collect files
+        shell: bash
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          mkdir -p out
+          case "${{ matrix.os }}" in
+            Windows)
+              f=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe)
+              cp "$f" "out/Flipleaf-$V-Windows.exe"
+              cp "$f.sig" out/windows.sig ;;
+            macOS)
+              d=src-tauri/target/universal-apple-darwin/release/bundle
+              cp $d/dmg/*.dmg "out/Flipleaf-$V-macOS.dmg"
+              cp $d/macos/*.app.tar.gz out/Flipleaf-macOS.app.tar.gz
+              cp $d/macos/*.app.tar.gz.sig out/macos.sig ;;
+            Linux)
+              f=$(ls src-tauri/target/release/bundle/appimage/*.AppImage)
+              cp "$f" "out/Flipleaf-$V-Linux.AppImage"
+              cp "$f.sig" out/linux.sig ;;
+          esac
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
-          releaseName: "Flipleaf v__VERSION__"
-          releaseBody: |
-            ${{ inputs.notes != '' && format('### What''s new{0}{1}{0}', fromJSON('"\n"'), inputs.notes) || '' }}
-            ### Downloads
+          name: ${{ matrix.os }}
+          path: out/
+          retention-days: 7
 
-            | Platform | File |
-            |:--|:--|
-            | **Windows** 10 / 11 | `Flipleaf_x.y.z_x64-setup.exe` (or `.msi` for managed installs) |
-            | **macOS** · Apple silicon | `Flipleaf_x.y.z_aarch64.dmg` |
-            | **macOS** · Intel | `Flipleaf_x.y.z_x64.dmg` |
-            | **Linux** | `.AppImage` · `.deb` · `.rpm` |
-            | **Web** | [vasileiostripolidis.github.io/flipleaf](https://vasileiostripolidis.github.io/flipleaf/) |
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NOTES: ${{ inputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
 
-            > [!NOTE]
-            > Builds are not code-signed yet. **Windows:** *More info → Run anyway*. **macOS:** right-click the app → *Open*.
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
-            Offline · no telemetry · [Privacy](https://github.com/vasileiostripolidis/flipleaf/blob/main/PRIVACY.md) · [License](https://github.com/vasileiostripolidis/flipleaf/blob/main/EULA.md)
-          releaseDraft: true
-          updaterJsonPreferNsis: true
-          prerelease: false
-          args: ${{ matrix.args }}
+      - name: Release notes and update manifest
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "V=$V" >> "$GITHUB_ENV"
+          python3 .github/scripts/release_files.py "$V" dist
+
+      - name: Publish the release
+        run: |
+          gh release create "v$V" \
+            "dist/Flipleaf-$V-Windows.exe" "dist/Flipleaf-$V-macOS.dmg" "dist/Flipleaf-$V-Linux.AppImage" \
+            --target "$GITHUB_SHA" --title "Flipleaf v$V" --notes-file dist/body.md --latest
+
+      - name: Store the updater files
+        run: |
+          mkdir -p /tmp/updates && cp dist/latest.json dist/Flipleaf-macOS.app.tar.gz /tmp/updates/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan updates
+          git rm -rfq .
+          cp /tmp/updates/* .
+          git add latest.json Flipleaf-macOS.app.tar.gz
+          git commit -qm "Updater files for v$V"
+          git push -f origin updates
+
+      - name: Publish the website with the new updater files
+        run: gh workflow run pages.yml --ref main

@@ -1,4 +1,6 @@
 # Publishes the web version (the src/ folder) to GitHub Pages on every push to main.
+# The in-app updater's files (from the "updates" branch, written by the Release workflow)
+# are published alongside it under /updates/.
 name: Web version
 
 on:
@@ -27,8 +29,15 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Web app + updater files
+        run: |
+          cp -r src _site
+          if git fetch -q --depth 1 origin updates; then
+            mkdir -p _site/updates && git --work-tree=_site/updates checkout FETCH_HEAD -- .
+          fi
+          ls _site/updates || true
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: src
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
