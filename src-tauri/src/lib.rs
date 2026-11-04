@@ -41,7 +41,19 @@ fn is_pdf(p: &Path) -> bool {
 }
 
 fn normalize(p: &Path) -> PathBuf {
-    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
+    plain(&p.canonicalize().unwrap_or_else(|_| p.to_path_buf()))
+}
+
+/// Windows: canonical paths come back as `\\?\C:\…`; keep the ordinary form `C:\…` (and `\\server\…`).
+fn plain(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        p.to_path_buf()
+    }
 }
 
 impl Files {
@@ -73,6 +85,14 @@ fn load_recent(app: &AppHandle) -> Vec<PathBuf> {
         .and_then(|f| std::fs::read_to_string(f).ok())
         .and_then(|s| serde_json::from_str::<Vec<PathBuf>>(&s).ok())
         .unwrap_or_default()
+        .into_iter()
+        .fold(Vec::new(), |mut list, p| {
+            let p = plain(&p);
+            if !list.contains(&p) {
+                list.push(p);
+            }
+            list
+        })
 }
 
 fn save_recent(app: &AppHandle, list: &[PathBuf]) {

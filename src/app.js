@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.10.0";
+const VERSION = "1.10.1";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -310,7 +310,9 @@ async function refreshRecent() {
     b.className = "btn";
     b.innerHTML = icon("file-text", 20) + `<span class="meta"><span class="name"></span><span class="path"></span></span>`;
     b.querySelector(".name").textContent = name;
-    b.querySelector(".path").textContent = path;
+    // the folder, cut at the start when it is too long so its end stays visible
+    const folder = path.replace(/^\\\\\?\\(UNC\\)?/, (m, unc) => (unc ? "\\\\" : "")).replace(/[\\/][^\\/]*$/, "").replace(/^([A-Za-z]:)$/, "$1\\") || path;
+    b.querySelector(".path").textContent = "\u200e" + folder + "\u200e";
     b.title = path;
     b.onclick = () => openPath(path);
     b.oncontextmenu = (e) => { e.preventDefault(); platform.forgetRecent(path).then(refreshRecent); };
@@ -413,6 +415,8 @@ $("btnPrev").onclick = () => viewer.previousPage();
 $("btnNext").onclick = () => viewer.nextPage();
 
 const zoomSelect = $("zoomSelect");
+// room at the end of each choice, so the longest one doesn't touch the edge of the open list
+for (const o of zoomSelect.options) if (o.id !== "zoomCustom") o.textContent = o.textContent.trim() + "\u2003\u2003";
 eventBus.on("scalechanging", ({ scale, presetValue }) => {
   const custom = $("zoomCustom");
   const preset = presetValue || [...zoomSelect.options].find((o) => o.value !== "custom" && Math.abs(+o.value - scale) < 1e-3)?.value;
