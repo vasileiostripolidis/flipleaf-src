@@ -9,6 +9,7 @@ rm -rf _site /tmp/oldsite && mkdir _site
 if git ls-remote --exit-code "$PUB" site >/dev/null 2>&1; then
   git clone -q --depth 1 -b site "$PUB" /tmp/oldsite
   [ -d /tmp/oldsite/updates ] && cp -r /tmp/oldsite/updates _site/
+  [ -d /tmp/oldsite/stats ] && cp -r /tmp/oldsite/stats _site/
 fi
 node .github/scripts/protect.mjs
 cp -r dist/. _site/
