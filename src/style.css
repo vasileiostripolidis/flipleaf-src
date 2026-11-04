@@ -113,6 +113,34 @@ body.mac-titlebar .appbar { padding-left: 78px; }
   background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .tgroup { display: flex; align-items: center; gap: 2px; }
+/* ---------- document tabs ---------- */
+.tabbar {
+  display: flex; align-items: flex-end; gap: 4px; height: 38px; padding: 0 8px; flex: none;
+  background: var(--surface-2); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none;
+}
+.tabbar::-webkit-scrollbar { display: none; }
+.tab {
+  display: flex; align-items: center; gap: 7px; height: 31px; min-width: 120px; max-width: 220px; padding: 0 6px 0 11px; flex: 0 1 auto;
+  border: 1px solid transparent; border-bottom: 0; border-radius: 9px 9px 0 0; color: var(--muted); cursor: default; user-select: none;
+  position: relative; top: 1px; transition: background .12s ease, color .12s ease;
+}
+.tab:hover { background: var(--hover); color: var(--ink); }
+.tab.on { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.tab:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.tab svg { flex: none; opacity: .8; }
+.tab .tname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.tab .tdirty { width: 7px; height: 7px; border-radius: 50%; background: var(--brand); flex: none; }
+.tab .tclose {
+  display: grid; place-items: center; width: 22px; height: 22px; flex: none; padding: 0; border: 0; border-radius: 6px;
+  background: none; color: inherit; opacity: 0; cursor: pointer;
+}
+.tab:hover .tclose, .tab.on .tclose { opacity: .75; }
+.tab .tclose:hover { opacity: 1; background: var(--active); }
+.tabbar .tadd { align-self: center; flex: none; margin-left: 2px; border-radius: 8px; }
+.closeall { display: grid; gap: 14px; }
+.closeall .check { display: flex; align-items: center; gap: 9px; cursor: pointer; color: var(--muted); }
+.closeall .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); }
+
 .pager .muted { white-space: nowrap; margin: 0 4px 0 6px; font-variant-numeric: tabular-nums; }
 #zoomSelect { width: auto; min-width: 64px; transition: width .12s ease; }
 .tooloptions {
@@ -335,7 +363,7 @@ body.placing #viewerContainer, body.placing #viewerContainer * { cursor: copy !i
 body.picking #toolGroup .tool, body.picking #btnEditPdf { opacity: .35; pointer-events: none; }
 
 /* presentation mode */
-body.presenting .appbar, body.presenting .toolbar, body.presenting .editbar, body.presenting .tooloptions, body.presenting .fl-sidebar { display: none !important; }
+body.presenting .appbar, body.presenting .toolbar, body.presenting .tabbar, body.presenting .editbar, body.presenting .tooloptions, body.presenting .fl-sidebar { display: none !important; }
 body.presenting #viewerContainer { background: #000; }
 body.presenting .pdfViewer .page { box-shadow: none; }
 

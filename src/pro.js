@@ -4,6 +4,7 @@ import "./pro-strings.js";
 import { PdfDoc, pdfium, readFloats, malloc, free, M, heap, putBytes, wstr, floats, ints } from "./pdfium.js";
 import { hasPro, plan } from "./licensing.js";
 import { makeZip, makeDocx } from "./zip.js";
+import { optimizePdf } from "./optimize.js";
 
 const FONT_URL = new URL("./vendor/fonts/", import.meta.url).href;
 const FPDF = { TEXT: 1, IMAGE: 3, ANNOT_TEXT: 1, ANNOT_LINE: 4, ANNOT_SQUARE: 5, ANNOT_CIRCLE: 6, FIELD_CHECK: 2, FIELD_TEXT: 6, FIELD_SIGN: 7 };
@@ -839,6 +840,9 @@ export function installPro(app) {
         }
         out = doc.save();
       } finally { doc.close(); }
+      // fonts, duplicates and file structure (most of the size of text documents)
+      const slim = await optimizePdf(out, { strong: target < 150 }).catch(() => null);
+      if (slim) out = slim;
     } finally { overlay.remove(); }
     const a = before.length, b = out.length; // read sizes now: the viewer takes ownership of the buffers
     if (b >= a * 0.97) { toast(t("compressNone"), 5000); return; }

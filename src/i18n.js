@@ -1,5 +1,8 @@
 // Interface text. English is the default; Greek is used when the system language is Greek.
 const en = {
+  closeTab: "Close tab", newTab: "Open another PDF", closeOthers: "Close other tabs", kTabs: "Next / previous tab",
+  closeAllTitle: "Close all tabs?", closeAllBody: "You have {n} documents open. Closing Flipleaf closes all of them.", closeAll: "Close all",
+  dontAskAgain: "Don't ask me again", askCloseAll: "Ask before closing several tabs",
   mFile: "File", mEdit: "Edit", mView: "View", mTools: "Tools", mHelp: "Help",
   openFile2: "Open…", openRecent: "Open recent", noRecent: "No recent files", closeDoc: "Close document", exit: "Exit",
   copy: "Copy", showSidebar: "Sidebar",
@@ -29,7 +32,7 @@ const en = {
   saveAs: "Save as…", rotateCw: "Rotate clockwise", rotateCcw: "Rotate counterclockwise",
   pageDisplay: "Page display", singlePage: "Single page", continuous: "Single page, scrolling",
   twoPage: "Two pages", twoPageScroll: "Two pages, scrolling", presentation: "Full screen",
-  readAloud: "Read this page aloud", nightMode: "Night reading", language: "Language", langSystem: "Same as system", langReload: "The window will reload to change the language. The open document will close.", langSaveFirst: "Save your changes first, then change the language.", checkUpdates: "Check for updates…", autoUpdates: "Check for updates automatically", upTitle: "Update available", upBody: "Flipleaf {v} is available. You have {cur}.", upNotes: "What's new", upInstall: "Update now", upDownload: "Download", upLater: "Later", upSkip: "Skip this version", upLatest: "You have the latest version ({v}).", upError: "Couldn't check for updates. Check your internet connection.", upDownloading: "Downloading update… {p}", upRestart: "Installing… Flipleaf will restart.", upFailed: "The update could not be installed: {e}", upSaveFirst: "Save your changes first, then update.", upWeb: "The web version always runs the latest version.", theme: "Theme", themeSystem: "Same as system", themeLight: "Light", themeDark: "Dark", themeToDark: "Dark theme", themeToLight: "Light theme", properties: "Document properties",
+  readAloud: "Read this page aloud", nightMode: "Night reading", language: "Language", langSystem: "Same as system", langReload: "The window will reload to change the language. Documents that are not saved to a file will close.", langSaveFirst: "Save your changes first, then change the language.", checkUpdates: "Check for updates…", autoUpdates: "Check for updates automatically", upTitle: "Update available", upBody: "Flipleaf {v} is available. You have {cur}.", upNotes: "What's new", upInstall: "Update now", upDownload: "Download", upLater: "Later", upSkip: "Skip this version", upLatest: "You have the latest version ({v}).", upError: "Couldn't check for updates. Check your internet connection.", upDownloading: "Downloading update… {p}", upRestart: "Installing the update… Flipleaf will restart.", upFailed: "The update could not be installed: {e}", upSaveFirst: "Save your changes first, then update.", upWeb: "The web version always runs the latest version.", theme: "Theme", themeSystem: "Same as system", themeLight: "Light", themeDark: "Dark", themeToDark: "Dark theme", themeToLight: "Light theme", properties: "Document properties",
   shortcuts: "Keyboard shortcuts", about: "About Flipleaf", reading: "Reading aloud…",
   thumbnails: "Pages", bookmarks: "Bookmarks", noBookmarks: "This document has no bookmarks.",
   done: "Done", color: "Color", thickness: "Thickness", fontSize: "Size",
@@ -38,7 +41,7 @@ const en = {
   hintInk: "Draw on the page with the mouse, pen or finger.",
   hintText: "Click where you want the text to appear.",
   hintStamp: "Click on the page to place an image, then drag to move or resize it.",
-  unsaved: "Unsaved changes", saved: "Saved", savedTo: "Saved to {path}", saveFailed: "Could not save: {err}",
+  unsaved: "Unsaved changes", saved: "Saved", upDone: "Update complete. You now have Flipleaf {v}.", saveFailed: "Could not save: {err}",
   discardTitle: "Save changes?", discardBody: "“{name}” has changes that haven't been saved.",
   discard: "Don't save", cancel: "Cancel", saveAndContinue: "Save", ok: "OK",
   passwordTitle: "Password required", passwordBody: "“{name}” is protected. Enter its password to open it.",
@@ -59,6 +62,9 @@ const en = {
 };
 
 const el = {
+  closeTab: "Κλείσιμο καρτέλας", newTab: "Άνοιγμα κι άλλου PDF", closeOthers: "Κλείσιμο των άλλων καρτελών", kTabs: "Επόμενη / προηγούμενη καρτέλα",
+  closeAllTitle: "Κλείσιμο όλων των καρτελών;", closeAllBody: "Έχεις {n} ανοιχτά έγγραφα. Αν κλείσεις το Flipleaf, θα κλείσουν όλα.", closeAll: "Κλείσιμο όλων",
+  dontAskAgain: "Να μην ερωτηθώ ξανά", askCloseAll: "Ερώτηση πριν κλείσουν πολλές καρτέλες",
   mFile: "Αρχείο", mEdit: "Επεξεργασία", mView: "Προβολή", mTools: "Εργαλεία", mHelp: "Βοήθεια",
   openFile2: "Άνοιγμα…", openRecent: "Πρόσφατα αρχεία", noRecent: "Δεν υπάρχουν πρόσφατα αρχεία", closeDoc: "Κλείσιμο εγγράφου", exit: "Έξοδος",
   copy: "Αντιγραφή", showSidebar: "Πλαϊνή στήλη",
@@ -89,7 +95,7 @@ const el = {
   saveAs: "Αποθήκευση ως…", rotateCw: "Περιστροφή δεξιόστροφα", rotateCcw: "Περιστροφή αριστερόστροφα",
   pageDisplay: "Προβολή σελίδων", singlePage: "Μία σελίδα", continuous: "Μία σελίδα, συνεχής κύλιση",
   twoPage: "Δύο σελίδες", twoPageScroll: "Δύο σελίδες, συνεχής κύλιση", presentation: "Πλήρης οθόνη",
-  readAloud: "Ανάγνωση σελίδας φωναχτά", nightMode: "Νυχτερινή ανάγνωση", language: "Γλώσσα", langSystem: "Όπως το σύστημα", langReload: "Το παράθυρο θα ανανεωθεί για να αλλάξει η γλώσσα. Το ανοιχτό έγγραφο θα κλείσει.", langSaveFirst: "Αποθήκευσε πρώτα τις αλλαγές σου και μετά άλλαξε τη γλώσσα.", checkUpdates: "Έλεγχος για ενημερώσεις…", autoUpdates: "Αυτόματος έλεγχος για ενημερώσεις", upTitle: "Διαθέσιμη ενημέρωση", upBody: "Το Flipleaf {v} είναι διαθέσιμο. Έχεις την {cur}.", upNotes: "Τι νέο υπάρχει", upInstall: "Ενημέρωση τώρα", upDownload: "Λήψη", upLater: "Αργότερα", upSkip: "Παράλειψη αυτής της έκδοσης", upLatest: "Έχεις την τελευταία έκδοση ({v}).", upError: "Δεν ήταν δυνατός ο έλεγχος για ενημερώσεις. Έλεγξε τη σύνδεσή σου στο internet.", upDownloading: "Λήψη ενημέρωσης… {p}", upRestart: "Εγκατάσταση… Το Flipleaf θα επανεκκινηθεί.", upFailed: "Η ενημέρωση δεν εγκαταστάθηκε: {e}", upSaveFirst: "Αποθήκευσε πρώτα τις αλλαγές σου και μετά κάνε την ενημέρωση.", upWeb: "Η έκδοση web τρέχει πάντα την τελευταία έκδοση.", theme: "Θέμα", themeSystem: "Όπως το σύστημα", themeLight: "Φωτεινό", themeDark: "Σκούρο", themeToDark: "Σκούρο θέμα", themeToLight: "Φωτεινό θέμα", properties: "Ιδιότητες εγγράφου",
+  readAloud: "Ανάγνωση σελίδας φωναχτά", nightMode: "Νυχτερινή ανάγνωση", language: "Γλώσσα", langSystem: "Όπως το σύστημα", langReload: "Το παράθυρο θα ανανεωθεί για να αλλάξει η γλώσσα. Όσα έγγραφα δεν είναι αποθηκευμένα σε αρχείο θα κλείσουν.", langSaveFirst: "Αποθήκευσε πρώτα τις αλλαγές σου και μετά άλλαξε τη γλώσσα.", checkUpdates: "Έλεγχος για ενημερώσεις…", autoUpdates: "Αυτόματος έλεγχος για ενημερώσεις", upTitle: "Διαθέσιμη ενημέρωση", upBody: "Το Flipleaf {v} είναι διαθέσιμο. Έχεις την {cur}.", upNotes: "Τι νέο υπάρχει", upInstall: "Ενημέρωση τώρα", upDownload: "Λήψη", upLater: "Αργότερα", upSkip: "Παράλειψη αυτής της έκδοσης", upLatest: "Έχεις την τελευταία έκδοση ({v}).", upError: "Δεν ήταν δυνατός ο έλεγχος για ενημερώσεις. Έλεγξε τη σύνδεσή σου στο internet.", upDownloading: "Λήψη ενημέρωσης… {p}", upRestart: "Εγκατάσταση ενημέρωσης… Το Flipleaf θα ξεκινήσει ξανά.", upFailed: "Η ενημέρωση δεν εγκαταστάθηκε: {e}", upSaveFirst: "Αποθήκευσε πρώτα τις αλλαγές σου και μετά κάνε την ενημέρωση.", upWeb: "Η έκδοση web τρέχει πάντα την τελευταία έκδοση.", theme: "Θέμα", themeSystem: "Όπως το σύστημα", themeLight: "Φωτεινό", themeDark: "Σκούρο", themeToDark: "Σκούρο θέμα", themeToLight: "Φωτεινό θέμα", properties: "Ιδιότητες εγγράφου",
   shortcuts: "Συντομεύσεις πληκτρολογίου", about: "Σχετικά με το Flipleaf", reading: "Ανάγνωση…",
   thumbnails: "Σελίδες", bookmarks: "Σελιδοδείκτες", noBookmarks: "Το έγγραφο δεν έχει σελιδοδείκτες.",
   done: "Τέλος", color: "Χρώμα", thickness: "Πάχος", fontSize: "Μέγεθος",
@@ -98,7 +104,7 @@ const el = {
   hintInk: "Σχεδίασε στη σελίδα με ποντίκι, γραφίδα ή δάχτυλο.",
   hintText: "Κάνε κλικ εκεί που θέλεις να μπει το κείμενο.",
   hintStamp: "Κάνε κλικ στη σελίδα για να βάλεις εικόνα και σύρε τη για να τη μετακινήσεις ή να αλλάξεις μέγεθος.",
-  unsaved: "Μη αποθηκευμένες αλλαγές", saved: "Αποθηκεύτηκε", savedTo: "Αποθηκεύτηκε: {path}", saveFailed: "Η αποθήκευση απέτυχε: {err}",
+  unsaved: "Μη αποθηκευμένες αλλαγές", saved: "Αποθηκεύτηκε", upDone: "Η ενημέρωση ολοκληρώθηκε. Τώρα έχεις το Flipleaf {v}.", saveFailed: "Η αποθήκευση απέτυχε: {err}",
   discardTitle: "Αποθήκευση αλλαγών;", discardBody: "Το «{name}» έχει αλλαγές που δεν έχουν αποθηκευτεί.",
   discard: "Χωρίς αποθήκευση", cancel: "Άκυρο", saveAndContinue: "Αποθήκευση", ok: "OK",
   passwordTitle: "Απαιτείται κωδικός", passwordBody: "Το «{name}» προστατεύεται. Γράψε τον κωδικό για να ανοίξει.",

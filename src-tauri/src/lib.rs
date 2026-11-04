@@ -18,7 +18,6 @@ use tauri::{
     ipc::{InvokeBody, Request, Response},
     AppHandle, Manager, State, WebviewWindow,
 };
-#[cfg(any(target_os = "macos", target_os = "ios"))]
 use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -364,7 +363,21 @@ pub fn run() {
         files.queue(PathBuf::from(arg));
     }
 
-    let builder = tauri::Builder::default();
+    // Opening another PDF while Flipleaf runs (double-click, "Open with") adds a tab to the
+    // running window instead of starting a second copy.
+    let builder = tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+        let files = app.state::<Files>();
+        for arg in args.iter().skip(1) {
+            let p = PathBuf::from(arg);
+            files.queue(if p.is_absolute() { p } else { PathBuf::from(&cwd).join(p) });
+        }
+        let _ = app.emit("open-files", ());
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }));
     #[cfg(not(feature = "store"))]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     let app = builder

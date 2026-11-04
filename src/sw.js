@@ -1,5 +1,5 @@
 // Flipleaf service worker: app shell cached up front, PDF.js extras (fonts, cmaps, wasm) cached on first use.
-const VERSION = "flipleaf-v15";
+const VERSION = "flipleaf-v16";
 const SHELL = [
   "./", "index.html", "app.js", "i18n.js", "icons.js", "platform.js", "editor.js", "pdfium.js", "pro.js", "pro-strings.js", "zip.js", "licensing.js", "signature.js", "style.css", "icon.svg", "manifest.webmanifest",
   "vendor/pdfjs/pdf.min.mjs", "vendor/pdfjs/pdf.worker.min.mjs", "vendor/pdfjs/web/pdf_viewer.mjs", "vendor/pdfjs/web/pdf_viewer.css",

@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.9.1";
+const VERSION = "1.10.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -67,13 +67,126 @@ eventBus.on("annotationeditoruimanager", ({ uiManager: m }) => (uiManager = m));
 
 const doc = { pdf: null, task: null, name: "", path: null, size: 0, dirty: false, key: "", password: undefined };
 
-async function openData({ name, data, path }, { dirty = false } = {}) {
-  if (!(await confirmDiscard())) return;
+/* ------------------------------------------------------------------ tabs */
+// Every open document is a tab. The visible tab lives in `doc` and the viewer; the others keep
+// their bytes (changes included), password and view, and are reloaded when they are selected.
+const tabs = [];
+let active = null;
+let tabSeq = 0;
+let pendingView = null;
+const tabDirty = (tab) => (tab === active ? doc.dirty : tab.dirty);
+// tab operations run one at a time (e.g. several files dropped at once)
+let tabQueue = Promise.resolve();
+const serial = (fn) => (...a) => (tabQueue = tabQueue.then(() => fn(...a)).catch((e) => { toast(t("failed", { err: e?.message || e })); return false; }));
+
+/** Opens a document in a new tab (or selects the tab that already shows that file). */
+const openData = serial(async ({ name, data, path }, { dirty = false } = {}) => {
+  const same = path && tabs.find((x) => (x === active ? doc.path : x.path) === path);
+  if (same) return selectTabNow(same);
+  const prev = active;
+  await stashActive();
+  const tab = { id: ++tabSeq, name, path, dirty };
+  tabs.splice(prev ? tabs.indexOf(prev) + 1 : tabs.length, 0, tab);
+  active = tab;
+  if (await loadDoc({ name, data, path }, { dirty })) return true;
+  // could not open (wrong file, password cancelled): go back to where we were
+  tabs.splice(tabs.indexOf(tab), 1);
+  active = null;
+  if (prev) await selectTabNow(prev); else showHome();
+  return false;
+});
+
+/** Keeps the visible tab's current state and empties the viewer. */
+async function stashActive() {
+  if (!active || !doc.pdf) return;
+  if (editor.active) await editor.exit(true);
+  closeFind();
+  const dirty = doc.dirty;
+  const bytes = dirty ? await documentBytes() : await doc.pdf.getData();
+  const v = viewer.currentScaleValue;
+  Object.assign(active, {
+    data: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), name: doc.name, path: doc.path,
+    password: doc.password, dirty, view: { page: viewer.currentPageNumber, scale: isNaN(+v) ? v : +v, rotation: viewer.pagesRotation },
+  });
+  rememberView();
+  await closeDocument();
+}
+
+async function selectTabNow(tab) {
+  if (tab === active || !tabs.includes(tab)) return true;
+  await stashActive();
+  active = tab;
+  const data = tab.data; tab.data = null;
+  pendingView = tab.view || null;
+  const ok = await loadDoc({ name: tab.name, data, path: tab.path, password: tab.password }, { dirty: tab.dirty });
+  if (!ok) { tab.data = data; renderTabs(); }
+  return ok;
+}
+const selectTab = serial(selectTabNow);
+
+/** Closes one tab, asking to save its changes first. Resolves false when cancelled. */
+async function closeTabNow(tab = active) {
+  if (!tab) return true;
+  if (tab !== active && tab.dirty && !(await selectTabNow(tab))) return false;
+  if (tab === active) {
+    if (!(await confirmDiscard())) return false;
+    if (editor.active) await editor.exit(false);
+    await closeDocument();
+    active = null;
+  }
+  const i = tabs.indexOf(tab);
+  tabs.splice(i, 1);
+  if (active) { renderTabs(); return true; }
+  const next = tabs[Math.min(i, tabs.length - 1)];
+  if (next) await selectTabNow(next); else showHome();
+  return true;
+}
+const closeTab = serial(closeTabNow);
+
+function showHome() {
+  document.body.classList.add("no-doc");
+  $("home").hidden = false;
+  $("docTitle").textContent = "Flipleaf";
+  setDirty(false);
+  renderTabs();
+  refreshRecent();
+}
+
+function cycleTab(step) {
+  if (tabs.length < 2) return;
+  const i = tabs.indexOf(active);
+  selectTab(tabs[(i + step + tabs.length) % tabs.length]);
+}
+
+function renderTabs() {
+  const bar = $("tabbar");
+  bar.replaceChildren(...tabs.map((tab) => {
+    const el = document.createElement("div");
+    el.className = "tab" + (tab === active ? " on" : "");
+    el.setAttribute("role", "tab");
+    el.setAttribute("aria-selected", tab === active);
+    el.tabIndex = tab === active ? 0 : -1;
+    const name = tab === active ? doc.name || tab.name : tab.name;
+    el.title = (tab === active ? doc.path : tab.path) || name;
+    el.innerHTML = icon("file-text", 15) + `<span class="tname"></span><span class="tdirty"${tabDirty(tab) ? "" : " hidden"}></span><button class="tclose" tabindex="-1">${icon("x", 14)}</button>`;
+    el.querySelector(".tname").textContent = name;
+    const x = el.querySelector(".tclose");
+    x.title = t("closeTab"); x.setAttribute("aria-label", t("closeTab"));
+    x.onclick = (e) => { e.stopPropagation(); closeTab(tab); };
+    el.onmousedown = (e) => { if (e.button === 1) e.preventDefault(); };
+    el.onauxclick = (e) => { if (e.button === 1) closeTab(tab); };
+    el.onclick = () => selectTab(tab);
+    return el;
+  }), Object.assign(document.createElement("button"), { className: "btn icon sm tadd", innerHTML: icon("plus", 16), title: t("newTab"), onclick: openPicker }));
+  bar.querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+async function loadDoc({ name, data, path, password }, { dirty = false } = {}) {
   const size = data.byteLength; // PDF.js takes ownership of `data`
   if (editor.active) await editor.exit(false);
   await closeDocument();
-  doc.password = undefined;
-  const loadingTask = pdfjsLib.getDocument({ data, ...LOAD_OPTIONS });
+  doc.password = password;
+  const loadingTask = pdfjsLib.getDocument({ data, ...LOAD_OPTIONS, password });
   doc.task = loadingTask;
   loadingTask.onPassword = async (update, reason) => {
     const pw = await askPassword(name, reason === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD);
@@ -86,9 +199,9 @@ async function openData({ name, data, path }, { dirty = false } = {}) {
     if (doc.task === loadingTask && e?.name !== "AbortException" && !/destroyed/i.test(e?.message)) {
       toast(e?.name === "InvalidPDFException" ? t("invalid") : t("failed", { err: e?.message || e }));
     }
-    return;
+    return false;
   }
-  if (doc.task !== loadingTask) { pdf.destroy(); return; }
+  if (doc.task !== loadingTask) { pdf.destroy(); return false; }
 
   Object.assign(doc, { pdf, name, path, size, dirty: false, key: pdf.fingerprints[0] });
   pdf.annotationStorage.onSetModified = () => setDirty(true);
@@ -104,12 +217,15 @@ async function openData({ name, data, path }, { dirty = false } = {}) {
   $("docTitle").title = title && title !== name ? title : "";
   updateTitle();
   $("pageCount").textContent = "/ " + pdf.numPages;
+  $("pageInput").value = 1; // the view restore below moves it if needed
 
   thumbs.build();
   buildOutline();
   if (dirty) setDirty(true);
-  pdf.getFieldObjects().then((f) => { if (f && Object.keys(f).length) toast(t("forms"), 5000); }).catch(() => {});
+  if (!password) pdf.getFieldObjects().then((f) => { if (f && Object.keys(f).length) toast(t("forms"), 5000); }).catch(() => {});
+  renderTabs();
   container.focus();
+  return true;
 }
 
 async function closeDocument() {
@@ -131,11 +247,13 @@ function setDirty(on) {
 }
 function updateTitle() {
   platform.setWindowTitle(doc.pdf ? `${doc.dirty ? "• " : ""}${doc.name} — Flipleaf` : "Flipleaf");
+  renderTabs();
 }
 
 // restore page, zoom and layout per document
 eventBus.on("pagesinit", () => {
-  const saved = store.get("view." + doc.key, null);
+  const saved = pendingView || store.get("view." + doc.key, null);
+  pendingView = null;
   applyLayout(store.get("layout", "scroll"), false);
   viewer.currentScaleValue = saved?.scale || store.get("zoom", "auto");
   if (saved?.rotation) viewer.pagesRotation = saved.rotation;
@@ -223,7 +341,7 @@ async function save({ as = false } = {}) {
     if (where !== "download") { doc.path = where; doc.name = where.split(/[\\/]/).pop(); $("docTitle").textContent = doc.name; }
     doc.pdf.annotationStorage.resetModified();
     setDirty(false);
-    toast(where === "download" ? t("saved") : t("savedTo", { path: where }));
+    toast(t("saved"));
     refreshRecent();
     return true;
   } catch (e) {
@@ -248,8 +366,32 @@ async function confirmDiscard() {
   if (choice === "save") return save();
   return choice === "discard";
 }
-const closeGuard = async () => confirmDiscard();
-closeGuard.isDirty = () => doc.dirty;
+/** Closing the window: with several tabs, asks once (unless turned off), then asks to save each unsaved one. */
+const closeGuard = serial(async () => {
+  if (tabs.length > 1 && store.get("askCloseAll", true)) {
+    const body = document.createElement("div");
+    body.className = "closeall";
+    body.append(text(t("closeAllBody", { n: tabs.length })));
+    const label = document.createElement("label");
+    label.className = "check";
+    label.innerHTML = `<input type="checkbox"><span></span>`;
+    label.querySelector("span").textContent = t("dontAskAgain");
+    body.append(label);
+    const choice = await dialog({
+      title: t("closeAllTitle"),
+      body,
+      buttons: [{ label: t("cancel"), value: "cancel", kind: "secondary" }, { label: t("closeAll"), value: "ok", kind: "primary" }],
+    });
+    if (choice !== "ok") return false;
+    if (label.querySelector("input").checked) store.set("askCloseAll", false);
+  }
+  for (const tab of [...tabs]) {
+    if (!tabDirty(tab)) continue;
+    if (!(await selectTabNow(tab)) || !(await confirmDiscard())) return false;
+  }
+  return true;
+});
+closeGuard.isDirty = () => tabs.some(tabDirty);
 platform.guardClose(closeGuard);
 
 /* ================================================================== navigation & zoom */
@@ -841,7 +983,7 @@ function showShortcuts() {
     ["kOpen", mod + "O"], ["kSave", mod + "S"], ["kSaveAs", mod + shift + "S"], ["kPrint", mod + "P"], ["kFind", mod + "F"],
     ["kSidebar", "F4"], ["kZoom", `${mod}+ / ${mod}−`], ["kActual", mod + "1"], ["kFitPage", mod + "0"], ["kFitWidth", mod + "2"],
     ["kRotate", `${mod}${shift}+ / ${mod}${shift}−`], ["kNav", "→ / ←"], ["kFirstLast", "Home / End"], ["kPresent", mod + "L"],
-    ["kEdit", mod + "E"], ["kClose", mod + "W"], ["kSelect", "V"], ["kHand", "H"], ["kUndo", `${mod}Z / ${mod}Y`], ["kNight", "N"], ["kProps", mod + "D"], ["kRead", mod + shift + "Y"], ["kHelp", "?"],
+    ["kEdit", mod + "E"], ["kClose", mod + "W"], ["kTabs", "Ctrl+Tab / Ctrl+Shift+Tab"], ["kSelect", "V"], ["kHand", "H"], ["kUndo", `${mod}Z / ${mod}Y`], ["kNight", "N"], ["kProps", mod + "D"], ["kRead", mod + shift + "Y"], ["kHelp", "?"],
   ];
   const box = document.createElement("div");
   box.className = "keys";
@@ -894,19 +1036,27 @@ setTheme(store.get("theme", "system"));
 
 async function setLanguage(lang) {
   if (lang === store.get("lang", "system")) return;
-  if (doc.dirty) return toast(t("langSaveFirst"), 5000);
-  if (doc.pdf && !doc.path) {
+  if (tabs.some(tabDirty)) return toast(t("langSaveFirst"), 5000);
+  const paths = tabs.map((x) => (x === active ? doc.path : x.path));
+  if (paths.some((p) => !p)) {
     const p = document.createElement("p"); p.textContent = t("langReload");
     const r = await dialog({ title: t("language"), body: p, buttons: [{ label: t("cancel"), value: "cancel" }, { label: t("ok"), value: "ok", kind: "primary" }] });
     if (r !== "ok") return;
   }
   store.set("lang", lang);
-  if (doc.path) store.set("reopen", doc.path); // reopened after the reload
+  if (paths.length) store.set("reopen", { paths: paths.filter(Boolean), active: active === null ? -1 : paths.filter(Boolean).indexOf(doc.path) }); // reopened after the reload
   location.reload();
 }
 {
   const reopen = store.get("reopen", null);
-  if (reopen) { store.set("reopen", null); licenseGate.then(() => openPath(reopen)).catch(() => {}); }
+  if (reopen) {
+    store.set("reopen", null);
+    const { paths = [reopen], active: at = 0 } = typeof reopen === "string" ? {} : reopen;
+    licenseGate.then(async () => {
+      for (const p of paths) await openPath(p);
+      if (tabs[at]) selectTab(tabs[at]);
+    }).catch(() => {});
+  }
 }
 
 /* ================================================================== updates */
@@ -949,13 +1099,18 @@ async function checkForUpdates(manual) {
   if (choice === "skip") return store.set("skipVersion", info.version);
   if (choice !== "go") return;
   if (!info.canInstall) return platform.openExternal("https://github.com/vasileiostripolidis/flipleaf/releases/latest");
-  if (doc.dirty) return toast(t("upSaveFirst"), 5000);
+  if (tabs.some(tabDirty)) return toast(t("upSaveFirst"), 5000);
   try {
+    store.set("updating", info.version); // shown as "update complete" after the restart
     await platform.installUpdate((got, total) => {
       toast(total ? t("upDownloading", { p: Math.round((got / total) * 100) + "%" }) : t("upDownloading", { p: "" }), 60000);
       if (total && got >= total) toast(t("upRestart"), 60000);
     });
-  } catch (e) { toast(t("upFailed", { e: String(e) }), 8000); }
+  } catch (e) { store.set("updating", null); toast(t("upFailed", { e: String(e) }), 8000); }
+}
+{
+  const to = store.get("updating", null);
+  if (to) { store.set("updating", null); if (to === VERSION) setTimeout(() => toast(t("upDone", { v: VERSION }), 6000), 800); }
 }
 
 // "direct" | "store" | "web"; the Store and the web version update themselves.
@@ -988,6 +1143,8 @@ const MENUS = {
     { label: "properties", key: mod + "D", icon: "info", run: showProperties, when: hasDoc },
     "-",
     { label: "closeDoc", key: mod + "W", icon: "x", run: closeFile, when: hasDoc },
+    { label: "closeOthers", icon: "x", run: () => closeOthers(), when: () => tabs.length > 1 },
+    { label: "askCloseAll", check: store.get("askCloseAll", true), run: () => store.set("askCloseAll", !store.get("askCloseAll", true)), when: () => platform.isDesktop },
     { label: "exit", key: platform.os === "mac" ? "⌘Q" : "Alt+F4", icon: "log-out", run: () => platform.quit(), when: () => platform.isDesktop },
   ],
   edit: () => [
@@ -1141,16 +1298,12 @@ addEventListener("keyup", (e) => {
   altAlone = false;
 });
 
-async function closeFile() {
-  if (!(await confirmDiscard())) return;
-  if (editor.active) await editor.exit(false);
-  await closeDocument();
-  document.body.classList.add("no-doc");
-  $("home").hidden = false;
-  $("docTitle").textContent = "Flipleaf";
-  setDirty(false);
-  refreshRecent();
-}
+const closeFile = () => closeTab(active);
+const closeOthers = serial(async () => {
+  const keep = active;
+  for (const tab of tabs.filter((x) => x !== keep)) if (!(await closeTabNow(tab))) return;
+  if (keep && active !== keep) await selectTabNow(keep);
+});
 
 /* ================================================================== edit text & images (PDFium) */
 
@@ -1278,6 +1431,7 @@ addEventListener("keydown", (e) => {
   if (mod && key === "d") { e.preventDefault(); showProperties(); return; }
   if (mod && key === "e") { e.preventDefault(); toggleEditPdf(true); return; }
   if (mod && key === "w") { e.preventDefault(); closeFile(); return; }
+  if (e.ctrlKey && (e.key === "Tab" || e.key === "PageDown" || e.key === "PageUp")) { e.preventDefault(); cycleTab(e.key === "PageUp" || (e.key === "Tab" && e.shiftKey) ? -1 : 1); return; }
   if (mod && key === "q" && platform.isDesktop) { e.preventDefault(); platform.quit(); return; }
   if (mod && e.shiftKey && key === "y") { e.preventDefault(); reading ? stopReading() : readAloud(); return; }
   if (mod && e.shiftKey && (e.key === "+" || e.key === "=")) { e.preventDefault(); rotate(90); return; }
@@ -1319,9 +1473,10 @@ addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("
 addEventListener("dragover", (e) => e.preventDefault());
 addEventListener("drop", (e) => {
   e.preventDefault(); dragDepth = 0; $("dropHint").hidden = true;
-  const f = e.dataTransfer?.files?.[0];
+  const files = [...(e.dataTransfer?.files || [])];
+  const f = files[0];
   if (!f) return;
-  if (f.type.startsWith("image/") && doc.pdf) addImage(f); else openFile(f);
+  if (f.type.startsWith("image/") && doc.pdf) addImage(f); else files.forEach(openFile);
 });
 addEventListener("paste", (e) => {
   if (e.target.closest?.("input, textarea, [contenteditable]")) return;
@@ -1400,4 +1555,4 @@ if (!platform.isDesktop && "serviceWorker" in navigator && location.protocol !==
 }
 
 // handy for debugging from the console
-window.flipleaf = { viewer, eventBus, doc, pro, get uiManager() { return uiManager; } };
+window.flipleaf = { viewer, eventBus, doc, pro, tabs, closeGuard, get uiManager() { return uiManager; } };

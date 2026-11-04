@@ -40,7 +40,7 @@ export function onOpenRequest(callback) {
   if (!isDesktop) return;
   const drain = async () => {
     const paths = await invoke("pending_files");
-    if (paths.length) callback(paths.at(-1));
+    for (const p of paths) callback(p);
   };
   T.event.listen("open-files", drain);
   drain();
