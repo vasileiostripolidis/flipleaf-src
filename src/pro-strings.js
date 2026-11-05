@@ -24,6 +24,8 @@ addStrings({
   compress: "Reduce file size…", imgFormat: "Format", imgDpi: "Resolution (DPI)", imagesHint: "Choose one or more images (JPG, PNG, WebP…). Each becomes a page.", pageSize: "Page size", fitImage: "Same as image", a4: "A4",
   compressLevel: "Level", compressHigh: "Light: best image quality", compressMedium: "Recommended: good quality, smaller file", compressLow: "Strong: smallest file",
   compressResult: "Reduced from {a} to {b} ({p}% smaller).", compressNone: "This document is already compact; nothing to reduce.",
+  wordExact: "Exactly like the PDF", wordExactHint: "Same layout, fonts and positions; the text stays editable. Best for forms, invoices and printed documents.",
+  wordFlow: "Flowing text", wordFlowHint: "Plain paragraphs that are easy to rewrite and reflow; the layout is simplified.", exportBtn: "Export",
   exported: "Exported.", wordNote: "Text and paragraphs are exported; complex layouts may need tidying in Word.",
   // forms
   prepareForm: "Prepare form", fieldText: "Text field", fieldCheck: "Checkbox", fieldSign: "Signature field", detectFields: "Detect fields", detected: "{n} fields detected.", formHint: "Drag on the page to add the chosen field.", fieldsAdded: "{n} form fields added.",
@@ -64,6 +66,8 @@ addStrings({
   compress: "Μείωση μεγέθους αρχείου…", imgFormat: "Μορφή", imgDpi: "Ανάλυση (DPI)", imagesHint: "Διάλεξε μία ή περισσότερες εικόνες (JPG, PNG, WebP…). Κάθε εικόνα γίνεται σελίδα.", pageSize: "Μέγεθος σελίδας", fitImage: "Όσο η εικόνα", a4: "A4",
   compressLevel: "Επίπεδο", compressHigh: "Ελαφριά: καλύτερη ποιότητα εικόνων", compressMedium: "Προτεινόμενη: καλή ποιότητα, μικρότερο αρχείο", compressLow: "Ισχυρή: το μικρότερο αρχείο",
   compressResult: "Μειώθηκε από {a} σε {b} ({p}% μικρότερο).", compressNone: "Το έγγραφο είναι ήδη συμπαγές· δεν υπάρχει κάτι να μειωθεί.",
+  wordExact: "Ακριβώς όπως το PDF", wordExactHint: "Ίδια διάταξη, γραμματοσειρές και θέσεις· το κείμενο μένει επεξεργάσιμο. Ιδανικό για έντυπα, τιμολόγια και δελτία.",
+  wordFlow: "Συνεχές κείμενο", wordFlowHint: "Απλές παράγραφοι, εύκολες για ξαναγράψιμο· η διάταξη απλοποιείται.", exportBtn: "Εξαγωγή",
   exported: "Η εξαγωγή ολοκληρώθηκε.", wordNote: "Εξάγονται το κείμενο και οι παράγραφοι· σύνθετες διατάξεις ίσως θέλουν τακτοποίηση στο Word.",
   prepareForm: "Προετοιμασία φόρμας", fieldText: "Πεδίο κειμένου", fieldCheck: "Πλαίσιο επιλογής", fieldSign: "Πεδίο υπογραφής", detectFields: "Αυτόματος εντοπισμός", detected: "Εντοπίστηκαν {n} πεδία.", formHint: "Σύρε πάνω στη σελίδα για να προσθέσεις το επιλεγμένο πεδίο.", fieldsAdded: "Προστέθηκαν {n} πεδία φόρμας.",
   protect: "Προστασία με κωδικό…", removeSecurity: "Αφαίρεση ασφάλειας", redact: "Μαύρισμα (redaction)…", sanitize: "Αφαίρεση κρυφών πληροφοριών",

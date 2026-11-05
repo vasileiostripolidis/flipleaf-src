@@ -37,13 +37,14 @@ export async function readPath(path) {
 
 /** Files the OS asked us to open (double-click, "Open with", Finder). */
 export function onOpenRequest(callback) {
-  if (!isDesktop) return;
+  if (!isDesktop) return Promise.resolve(0);
   const drain = async () => {
     const paths = await invoke("pending_files");
     for (const p of paths) callback(p);
+    return paths.length;
   };
   T.event.listen("open-files", drain);
-  drain();
+  return drain(); // resolves to the number of files the app was started with
 }
 
 /* ---------------------------------------------------------------- saving */

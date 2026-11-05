@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.10.1";
+const VERSION = "1.11.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -144,6 +144,7 @@ async function closeTabNow(tab = active) {
 const closeTab = serial(closeTabNow);
 
 function showHome() {
+  $("launching")?.remove();
   document.body.classList.add("no-doc");
   $("home").hidden = false;
   $("docTitle").textContent = "Flipleaf";
@@ -224,6 +225,7 @@ async function loadDoc({ name, data, path, password }, { dirty = false } = {}) {
   if (dirty) setDirty(true);
   if (!password) pdf.getFieldObjects().then((f) => { if (f && Object.keys(f).length) toast(t("forms"), 5000); }).catch(() => {});
   renderTabs();
+  $("launching")?.remove();
   container.focus();
   return true;
 }
@@ -291,7 +293,7 @@ $("btnOpenHome").onclick = openPicker;
 // prompt must never replace the license dialog (that would count as "Decline" and quit).
 let licenseAnswered;
 const licenseGate = new Promise((done) => (licenseAnswered = done));
-platform.onOpenRequest((path) => licenseGate.then(() => openPath(path)));
+const startFiles = platform.onOpenRequest((path) => licenseGate.then(() => openPath(path))).catch(() => 0);
 
 // remote file in the web version: ?file=https://…
 const remote = new URLSearchParams(location.search).get("file");
@@ -1053,6 +1055,11 @@ async function setLanguage(lang) {
 }
 {
   const reopen = store.get("reopen", null);
+  // Start screen: shown only when Flipleaf was not started to open a file (avoids a flash of it).
+  startFiles.then((n) => {
+    if (!n && !reopen && !(remote && !platform.isDesktop) && !doc.pdf) { $("home").hidden = false; $("launching")?.remove(); }
+    else setTimeout(() => { if (!doc.pdf && !tabs.length) showHome(); }, 30000); // safety net
+  });
   if (reopen) {
     store.set("reopen", null);
     const { paths = [reopen], active: at = 0 } = typeof reopen === "string" ? {} : reopen;
