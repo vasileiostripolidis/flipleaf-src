@@ -5,7 +5,7 @@ import { PdfDoc, pdfium, readFloats, malloc, free, M, heap, putBytes, wstr, floa
 import { hasPro, plan } from "./licensing.js";
 import { makeZip, makeDocx } from "./zip.js";
 import { optimizePdf } from "./optimize.js";
-import { exactDocx } from "./docx-exact.js";
+import { layoutDocx } from "./docx-layout.js";
 
 const FONT_URL = new URL("./vendor/fonts/", import.meta.url).href;
 const FPDF = { TEXT: 1, IMAGE: 3, ANNOT_TEXT: 1, ANNOT_LINE: 4, ANNOT_SQUARE: 5, ANNOT_CIRCLE: 6, FIELD_CHECK: 2, FIELD_TEXT: 6, FIELD_SIGN: 7 };
@@ -794,7 +794,7 @@ export function installPro(app) {
     const overlay = busy(t("working"));
     try {
       let docx;
-      if (exact) docx = await exactDocx(await bytesNow(), pw(), { title: baseName() });
+      if (exact) docx = await layoutDocx(await bytesNow(), pw(), { title: baseName() });
       else docx = makeDocx(await readParagraphs(app.doc.pdf), { title: baseName() });
       overlay.remove();
       if (await platform.saveBytesAs(docx, `${baseName()}.docx`)) toast(exact ? t("exported") : t("wordNote"), 6000);
