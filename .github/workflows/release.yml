@@ -5,6 +5,9 @@
 # repository vasileiostripolidis/flipleaf with exactly three downloads: Windows (.exe),
 # macOS (universal .dmg) and Linux (.AppImage). The in-app updater's files (latest.json and
 # the macOS update package) go to the public website under /updates/.
+# The builds upload their files straight into a draft of the public release (no workflow
+# artifacts, so the private repository's artifact storage is never needed); the publish job
+# then writes the notes and update manifest, keeps only the three downloads and publishes it.
 # If the STORE_* repository variables are set, a Microsoft Store package (.msix) is built
 # too and attached to the workflow run, ready to upload to Partner Center.
 name: Release
@@ -21,7 +24,20 @@ permissions:
   contents: read
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Draft release in the public repository
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          gh release view "v$V" --repo vasileiostripolidis/flipleaf >/dev/null 2>&1 ||
+            gh release create "v$V" --repo vasileiostripolidis/flipleaf --draft --title "Flipleaf v$V" --notes "Preparing…"
+
   build:
+    needs: prepare
     strategy:
       fail-fast: true
       matrix:
@@ -87,11 +103,13 @@ jobs:
           esac
           ls -la out
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.os }}
-          path: out/
-          retention-days: 7
+      - name: Upload to the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          gh release upload "v$V" out/* --repo vasileiostripolidis/flipleaf --clobber
 
   store:
     if: vars.STORE_IDENTITY_NAME != ''
@@ -133,29 +151,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
-        with:
-          path: release
-          pattern: "{Windows,macOS,Linux}"
-          merge-multiple: true
-
-      - name: Release notes and update manifest
+      - name: Files from the draft release
         run: |
           V=$(node -p "require('./src-tauri/tauri.conf.json').version")
           echo "V=$V" >> "$GITHUB_ENV"
-          python3 .github/scripts/release_files.py "$V" release
+          gh release download "v$V" --repo vasileiostripolidis/flipleaf --dir release --clobber
+          ls -la release
+
+      - name: Release notes and update manifest
+        run: python3 .github/scripts/release_files.py "$V" release
 
       - name: Publish the release (public repository)
         run: |
-          # a re-run of the same version replaces the files of the existing release
-          if gh release view "v$V" --repo vasileiostripolidis/flipleaf >/dev/null 2>&1; then
-            gh release upload "v$V" release/Flipleaf-$V-{Windows.exe,macOS.dmg,Linux.AppImage} --repo vasileiostripolidis/flipleaf --clobber
-            gh release edit "v$V" --repo vasileiostripolidis/flipleaf --notes-file release/body.md
-          else
-          gh release create "v$V" \
-            "release/Flipleaf-$V-Windows.exe" "release/Flipleaf-$V-macOS.dmg" "release/Flipleaf-$V-Linux.AppImage" \
-            --repo vasileiostripolidis/flipleaf --title "Flipleaf v$V" --notes-file release/body.md --latest
-          fi
+          R=vasileiostripolidis/flipleaf
+          # only the three downloads stay on the release page; the updater files go to the website
+          for a in windows.sig macos.sig linux.sig Flipleaf-macOS.app.tar.gz; do gh release delete-asset "v$V" "$a" --repo $R -y || true; done
+          gh release edit "v$V" --repo $R --title "Flipleaf v$V" --notes-file release/body.md --draft=false --latest
 
       - uses: actions/setup-node@v4
         with:
