@@ -16,7 +16,7 @@ const PRO_FEATURES = [
   // Edit & organize
   "organize", "combine", "split", "extract", "insertPages", "crop", "headerFooter", "watermark", "bates",
   // Convert
-  "imagesToPdf", "exportImages", "exportText", "exportWord", "compress",
+  "imagesToPdf", "scan", "exportImages", "exportText", "exportWord", "compress",
   // Forms & signatures
   "prepareForm",
   // Security

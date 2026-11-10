@@ -5,6 +5,7 @@ import { PdfDoc, pdfium, readFloats, malloc, free, M, heap, putBytes, wstr, floa
 import { hasPro, plan } from "./licensing.js";
 import { makeZip, makeDocx } from "./zip.js";
 import { optimizePdf } from "./optimize.js";
+import { openScanner } from "./scan.js";
 import { layoutDocx } from "./docx-layout.js";
 
 const FONT_URL = new URL("./vendor/fonts/", import.meta.url).href;
@@ -19,7 +20,7 @@ export function installPro(app) {
   function gate(feature, fn) {
     return async (...args) => {
       if (!hasPro(feature)) { await dialog({ title: "Flipleaf Pro", body: el("p", t("launchFree")), buttons: [{ label: t("ok"), value: "ok", kind: "primary" }] }); return; }
-      if (!app.doc.pdf && !["combine", "imagesToPdf"].includes(feature)) return;
+      if (!app.doc.pdf && !["combine", "imagesToPdf", "scan"].includes(feature)) return;
       try { return await fn(...args); }
       catch (e) { console.error(e); toast(t("failed", { err: e?.message || e }), 6000); }
     };
@@ -711,6 +712,29 @@ export function installPro(app) {
     } finally { overlay.remove(); }
   });
 
+  /** Scanner: photos of paper pages → clean, straight A4 PDF pages. */
+  const scan = gate("scan", async (files) => {
+    const list = files?.length ? files : await pickFiles("image/*", true);
+    if (!list.length) return;
+    const pages = await openScanner(list, { t, toast, more: () => pickFiles("image/*", true) });
+    if (!pages?.length) return;
+    const overlay = busy(t("working"));
+    try {
+      const doc = await PdfDoc.create();
+      try {
+        for (const pg of pages) {
+          // A4 at 72 points per inch; other proportions keep the A4 width
+          const portrait = pg.h >= pg.w, W = portrait ? 595.28 : 841.89, H = W * pg.h / pg.w;
+          const i = doc.count;
+          P().FPDFPage_New(doc.h, i, W, H);
+          placeImage(doc, i, { bytes: pg.bytes, png: false, w: pg.w, h: pg.h }, 0, 0, W, H);
+        }
+        const stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "-");
+        await app.openData({ name: `${t("scanFileName")} ${stamp}.pdf`, data: doc.save(), path: null }, { dirty: true });
+      } finally { doc.close(); }
+    } finally { overlay.remove(); }
+  });
+
   const exportImages = gate("exportImages", async () => {
     const box = html(`<div class="frow wrap"><label class="frow"><span>${t("imgFormat")}</span><select class="field" data-f><option value="png">PNG</option><option value="jpeg">JPEG</option></select></label>
       <label class="frow"><span>${t("imgDpi")}</span><select class="field" data-d><option>72</option><option selected>150</option><option>300</option></select></label></div>`);
@@ -1189,7 +1213,7 @@ export function installPro(app) {
       { id: "crop", icon: "scale", run: crop }, { id: "headerFooter", icon: "a-large-small", run: () => headerFooter() },
       { id: "watermark", icon: "type", run: watermark }, { id: "bates", icon: "keyboard", run: bates } ] },
     { cat: "catConvert", items: [
-      { id: "imagesToPdf", icon: "image-plus", run: imagesToPdf, noDoc: true }, { id: "exportWord", icon: "file-text", run: exportWord },
+      { id: "scan", icon: "scan-line", run: () => scan(), noDoc: true }, { id: "imagesToPdf", icon: "image-plus", run: imagesToPdf, noDoc: true }, { id: "exportWord", icon: "file-text", run: exportWord },
       { id: "exportImages", icon: "image-plus", run: exportImages }, { id: "exportText", icon: "scroll-text", run: exportText },
       { id: "compress", icon: "minus", run: compress } ] },
     { cat: "catForms", items: [
@@ -1226,5 +1250,5 @@ export function installPro(app) {
     await wideDialog({ title: t("allTools"), body: box, buttons: [] });
   }
 
-  return { menuItems, allTools, refreshComments, pickActive: () => pick.active, organize, combine, imagesToPdf, protect, redact, compare, exportWord, compress, notes, shapes, stamps, prepareForm, headerFooter };
+  return { menuItems, allTools, refreshComments, pickActive: () => pick.active, organize, combine, imagesToPdf, scan, protect, redact, compare, exportWord, compress, notes, shapes, stamps, prepareForm, headerFooter };
 }

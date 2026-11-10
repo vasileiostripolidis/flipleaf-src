@@ -29,7 +29,7 @@ addEventListener("contextmenu", (e) => { if (!__editable(e.target) && !e.default
 
 const bundled = await build({
   entryPoints: [join(SRC, "app.js")], bundle: true, format: "esm", write: false, minify: true,
-  target: "es2022", legalComments: "none", external: ["./vendor/*"], charset: "utf8",
+  target: "es2022", legalComments: "inline", external: ["./vendor/*"], charset: "utf8",
   banner: { js: GUARD },
 });
 const code = bundled.outputFiles[0].text;

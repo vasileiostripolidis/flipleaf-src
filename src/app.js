@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.12.0";
+const VERSION = "1.13.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -289,6 +289,7 @@ async function openFile(file) {
 $("fileInput").addEventListener("change", (e) => openFile(e.target.files[0]));
 $("btnOpen").onclick = openPicker;
 $("btnOpenHome").onclick = openPicker;
+$("btnScanHome").onclick = () => pro.scan();
 // Files the OS asks us to open wait until the license agreement has been answered: a password
 // prompt must never replace the license dialog (that would count as "Decline" and quit).
 let licenseAnswered;
@@ -1140,6 +1141,7 @@ const MENUS = {
     { label: "openRecent", icon: "clock", sub: recentMenu, when: () => platform.isDesktop },
     { label: "createPdf", icon: "plus", sub: () => [
       { label: "combine", icon: "copy", pro: true, run: () => pro.combine() },
+      { label: "scan", icon: "scan-line", pro: true, run: () => pro.scan() },
       { label: "imagesToPdf", icon: "image-plus", pro: true, run: () => pro.imagesToPdf() },
     ] },
     "-",

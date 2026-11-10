@@ -419,3 +419,52 @@ body.presenting .pdfViewer .page { box-shadow: none; }
 .radios input { margin: 3px 0 0; accent-color: var(--brand); flex: none; }
 .radios span { display: grid; gap: 3px; }
 .radios small { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+
+/* ---------- start screen actions ---------- */
+.home-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.home-actions .btn svg { margin: 0; display: inline-block; }
+
+/* ---------- document scanner ---------- */
+.scan { position: fixed; inset: 0; z-index: 60; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); background: var(--bg); color: var(--ink); }
+.scan.busy { cursor: progress; }
+.scan.busy::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 40%, transparent); }
+.scan-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.scan-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.scan-title h2 { font-size: 16px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scan-title .muted { font-size: 13px; white-space: nowrap; }
+.scan-actions { display: flex; gap: 8px; flex: none; }
+.scan-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; padding: 14px 16px; min-height: 0; }
+.scan-pane { display: grid; grid-template-rows: auto 1fr auto auto; gap: 10px; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.scan-label { font-size: 12px; font-weight: 600; letter-spacing: .3px; color: var(--muted); }
+.scan-stage { position: relative; min-height: 0; border-radius: 10px; overflow: hidden; background: color-mix(in srgb, var(--ink) 6%, var(--surface)); touch-action: none; }
+.scan-stage canvas[data-r="photo"], .scan-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.scan-stage svg { cursor: crosshair; }
+.scan-stage .shade { fill: rgba(0, 0, 0, .38); }
+.scan-stage .edge { fill: none; stroke: #22c55e; stroke-width: 2.5; stroke-linejoin: round; }
+.scan-stage .corner { fill: rgba(255, 255, 255, .9); stroke: #16a34a; stroke-width: 3; cursor: grab; }
+.scan-stage .corner:active { cursor: grabbing; }
+.scan-loupe { position: absolute; top: 12px; width: 150px; height: 150px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); pointer-events: none; }
+.scan-stage.result canvas { position: absolute; inset: 10px; width: calc(100% - 20px); height: calc(100% - 20px); object-fit: contain; }
+.scan-wait { position: absolute; top: 10px; right: 10px; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--brand); animation: fl-spin .8s linear infinite; }
+.scan-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.scan-row .seg { flex: 0 1 auto; }
+.scan-pages { display: flex; gap: 10px; padding: 10px 16px 14px; overflow-x: auto; background: var(--surface); border-top: 1px solid var(--line); }
+.scan-thumb { position: relative; flex: none; width: 92px; height: 124px; border-radius: 10px; border: 2px solid var(--line); background: #fff; overflow: hidden; cursor: pointer; display: grid; place-items: center; }
+.scan-thumb.on { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent); }
+.scan-thumb img { max-width: 100%; max-height: 100%; }
+.scan-thumb .ph { width: 60%; height: 70%; border-radius: 4px; background: var(--line); }
+.scan-thumb .n { position: absolute; left: 6px; top: 6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: rgba(0, 0, 0, .65); color: #fff; font-size: 11.5px; display: grid; place-items: center; }
+.scan-thumb .tools { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; padding: 4px; background: linear-gradient(transparent, rgba(0, 0, 0, .55)); opacity: 0; transition: opacity .12s ease; }
+.scan-thumb:hover .tools, .scan-thumb.on .tools { opacity: 1; }
+.scan-thumb .mini { width: 24px; height: 24px; border: 0; border-radius: 7px; background: rgba(255, 255, 255, .92); color: #111; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.scan-add { flex: none; width: 92px; height: 124px; border-radius: 10px; border: 2px dashed var(--line); background: none; color: var(--muted); display: grid; place-content: center; justify-items: center; gap: 6px; cursor: pointer; font: inherit; font-size: 12px; padding: 6px; }
+.scan-add:hover { border-color: var(--brand); color: var(--brand); }
+@media (max-width: 820px) {
+  .scan-top { padding: 8px 10px; }
+  .scan-title h2 { font-size: 15px; }
+  .scan-title .muted, .scan-title svg { display: none; }
+  .scan-main { grid-template-columns: minmax(0, 1fr); overflow: auto; padding: 10px; gap: 10px; }
+  .scan-pane { grid-template-rows: auto minmax(46vh, 1fr) auto auto; }
+  .scan-pages { padding: 8px 10px 10px; }
+  .scan-thumb, .scan-add { width: 72px; height: 98px; }
+}
