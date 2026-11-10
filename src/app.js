@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.13.0";
+const VERSION = "1.14.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -568,9 +568,33 @@ $("btnUndo").disabled = $("btnRedo").disabled = true;
 $("btnUndo").onclick = () => uiManager?.undo();
 $("btnRedo").onclick = () => uiManager?.redo();
 
+/**
+ * A photo about to be inserted can go through the scanner first (straighten, whiten the paper).
+ * Asks each time unless the user chose "remember"; resolves to the file to insert, or null.
+ */
+async function prepareImage(file) {
+  if (!file || !/^image\//.test(file.type)) return file;
+  let choice = store.get("imageScan", "ask");
+  if (choice === "ask") {
+    const body = document.createElement("div");
+    body.className = "closeall";
+    body.append(text(t("imgScanBody")));
+    const label = document.createElement("label");
+    label.className = "check";
+    label.innerHTML = `<input type="checkbox"><span></span>`;
+    label.querySelector("span").textContent = t("rememberChoice");
+    body.append(label);
+    choice = await dialog({ title: t("imgScanTitle"), body, buttons: [{ label: t("imgAsIs"), value: "asis", kind: "secondary" }, { label: t("imgScan"), value: "scan", kind: "primary" }] });
+    if (choice !== "asis" && choice !== "scan") return null;
+    if (label.querySelector("input").checked) store.set("imageScan", choice);
+  }
+  return choice === "scan" ? pro.scanImage(file) : file;
+}
+
 /** Adds an image (or signature) to the current page as a movable, resizable object. */
-async function addImage(file) {
+async function addImage(file, { photo = true } = {}) {
   if (!doc.pdf || !file) return;
+  if (photo) { file = await prepareImage(file); if (!file) return; }
   await setTool("stamp");
   await sleep(80);
   const layer = uiManager?.currentLayer;
@@ -659,7 +683,7 @@ async function addImageAt(file, pageIndex, px, py, widthPx) {
   await setTool("stamp");
   await sleep(80);
   const layer = uiManager?.getLayer(pageIndex);
-  if (!layer) return addImage(file);
+  if (!layer) return addImage(file, { photo: false });
   const before = new Set(uiManager.getEditors(pageIndex));
   await layer.pasteEditor({ mode: ED.STAMP }, { bitmapFile: file });
   let ed = null;
@@ -1157,6 +1181,7 @@ const MENUS = {
     "-",
     { label: "closeDoc", key: mod + "W", icon: "x", run: closeFile, when: hasDoc },
     { label: "closeOthers", icon: "x", run: () => closeOthers(), when: () => tabs.length > 1 },
+    { label: "askImageScan", check: store.get("imageScan", "ask") === "ask", run: () => store.set("imageScan", store.get("imageScan", "ask") === "ask" ? "asis" : "ask") },
     { label: "askCloseAll", check: store.get("askCloseAll", true), run: () => store.set("askCloseAll", !store.get("askCloseAll", true)), when: () => platform.isDesktop },
     { label: "exit", key: platform.os === "mac" ? "⌘Q" : "Alt+F4", icon: "log-out", run: () => platform.quit(), when: () => platform.isDesktop },
   ],
@@ -1323,6 +1348,7 @@ const closeOthers = serial(async () => {
 const editor = createEditor({
   viewer, eventBus, t, toast, icon,
   pickSignature: async () => { const url = await studio.open(); return url ? urlToFile(url) : null; },
+  prepareImage: (f) => prepareImage(f),
   onChange: () => setDirty(true),
   onApply: (bytes) => replaceDocumentData(bytes),
 });
@@ -1489,7 +1515,10 @@ addEventListener("drop", (e) => {
   const files = [...(e.dataTransfer?.files || [])];
   const f = files[0];
   if (!f) return;
-  if (f.type.startsWith("image/") && doc.pdf) addImage(f); else files.forEach(openFile);
+  const images = files.filter((x) => /^image\//.test(x.type));
+  if (images.length && doc.pdf) addImage(images[0]);
+  else if (images.length) pro.scan(images); // photos dropped on the start screen go to the scanner
+  else files.forEach(openFile);
 });
 addEventListener("paste", (e) => {
   if (e.target.closest?.("input, textarea, [contenteditable]")) return;

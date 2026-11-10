@@ -468,3 +468,5 @@ body.presenting .pdfViewer .page { box-shadow: none; }
   .scan-pages { padding: 8px 10px 10px; }
   .scan-thumb, .scan-add { width: 72px; height: 98px; }
 }
+.check-row { display: flex; align-items: center; gap: 9px; margin-top: 12px; cursor: pointer; }
+.check-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); }

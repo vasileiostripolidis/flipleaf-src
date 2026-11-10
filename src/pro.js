@@ -684,11 +684,13 @@ export function installPro(app) {
 
   const imagesToPdf = gate("imagesToPdf", async () => {
     const box = html(`<p class="muted small" style="margin:0 0 10px">${t("imagesHint")}</p>
-      <label class="frow"><span>${t("pageSize")}</span><select class="field" data-size><option value="a4">${t("a4")}</option><option value="fit">${t("fitImage")}</option></select></label>`);
+      <label class="frow"><span>${t("pageSize")}</span><select class="field" data-size><option value="a4">${t("a4")}</option><option value="fit">${t("fitImage")}</option></select></label>
+      <label class="check-row"><input type="checkbox" data-scan><span>${t("imagesScan")}</span></label>`);
     if (await ask(t("imagesToPdf"), box, t("chooseFiles")) !== "ok") return;
     const mode = box.querySelector("[data-size]").value;
     const list = await pickFiles("image/*", true);
     if (!list.length) return;
+    if (box.querySelector("[data-scan]").checked) return scan(list);
     const overlay = busy(t("working"));
     try {
       const doc = await PdfDoc.create();
@@ -734,6 +736,13 @@ export function installPro(app) {
       } finally { doc.close(); }
     } finally { overlay.remove(); }
   });
+
+  /** One photo through the scanner (straighten, clean up); resolves to a JPEG File, or null if cancelled. */
+  async function scanImage(file) {
+    const pages = await openScanner([file], { t, toast, single: true, more: async () => [] });
+    if (!pages?.length) return null;
+    return new File([pages[0].bytes], file.name.replace(/\.[^.]+$/, "") + "-scan.jpg", { type: "image/jpeg" });
+  }
 
   const exportImages = gate("exportImages", async () => {
     const box = html(`<div class="frow wrap"><label class="frow"><span>${t("imgFormat")}</span><select class="field" data-f><option value="png">PNG</option><option value="jpeg">JPEG</option></select></label>
@@ -1123,7 +1132,7 @@ export function installPro(app) {
     if (!chosen) { const tx = box.querySelector("[data-t]").value.trim(); if (!tx) return; chosen = { text: tx.toUpperCase(), color: box.querySelector("[data-c]").value }; }
     const canvas = stampImage(chosen.text, chosen.color, box.querySelector("[data-d]").checked);
     const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
-    await app.addImage(new File([blob], "stamp.png", { type: "image/png" }));
+    await app.addImage(new File([blob], "stamp.png", { type: "image/png" }), { photo: false });
   });
 
   /* comments panel */
@@ -1250,5 +1259,5 @@ export function installPro(app) {
     await wideDialog({ title: t("allTools"), body: box, buttons: [] });
   }
 
-  return { menuItems, allTools, refreshComments, pickActive: () => pick.active, organize, combine, imagesToPdf, scan, protect, redact, compare, exportWord, compress, notes, shapes, stamps, prepareForm, headerFooter };
+  return { menuItems, allTools, refreshComments, pickActive: () => pick.active, organize, combine, imagesToPdf, scan, scanImage, protect, redact, compare, exportWord, compress, notes, shapes, stamps, prepareForm, headerFooter };
 }

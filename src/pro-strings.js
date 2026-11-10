@@ -20,6 +20,7 @@ addStrings({
   wmText: "Text", wmOpacity: "Opacity", wmAngle: "Angle", wmDefault: "CONFIDENTIAL",
   batesPrefix: "Prefix", batesStart: "Start at", batesDigits: "Digits", batesPos: "Position",
   // convert
+  imagesScan: "Straighten and clean up as scans", scanInsert: "Insert",
   scan: "Scan from photos…", scanTitle: "Scan document", scanCreate: "Create PDF", scanAdjust: "Drag the corners onto the corners of the page",
   scanResult: "Result", scanDetect: "Find the page", scanFull: "Whole photo", scanMode_auto: "Enhanced", scanMode_gray: "Grey",
   scanMode_bw: "Black & white", scanMode_original: "Original", scanRotL: "Rotate left", scanRotR: "Rotate right", scanPaper: "Page",
@@ -68,6 +69,7 @@ addStrings({
   fontSize: "Μέγεθος", color: "Χρώμα", margin: "Περιθώριο",
   wmText: "Κείμενο", wmOpacity: "Διαφάνεια", wmAngle: "Γωνία", wmDefault: "ΕΜΠΙΣΤΕΥΤΙΚΟ",
   batesPrefix: "Πρόθεμα", batesStart: "Έναρξη από", batesDigits: "Ψηφία", batesPos: "Θέση",
+  imagesScan: "Ίσιωμα και καθάρισμα σαν σάρωση", scanInsert: "Εισαγωγή",
   scan: "Σάρωση από φωτογραφίες…", scanTitle: "Σάρωση εγγράφου", scanCreate: "Δημιουργία PDF", scanAdjust: "Σύρε τις γωνίες πάνω στις γωνίες της σελίδας",
   scanResult: "Αποτέλεσμα", scanDetect: "Εντοπισμός σελίδας", scanFull: "Όλη η φωτογραφία", scanMode_auto: "Βελτιωμένο", scanMode_gray: "Γκρι",
   scanMode_bw: "Ασπρόμαυρο", scanMode_original: "Πρωτότυπο", scanRotL: "Περιστροφή αριστερά", scanRotR: "Περιστροφή δεξιά", scanPaper: "Σελίδα",

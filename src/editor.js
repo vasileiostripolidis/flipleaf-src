@@ -27,7 +27,7 @@ async function loadFontBytes(file) {
   return fontBytes.get(file);
 }
 
-export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCancel, onChange, pickSignature }) {
+export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCancel, onChange, pickSignature, prepareImage }) {
   let doc = 0, docPtr = 0, form = 0, formInfo = 0;
   const pages = new Map();       // index → { page, text }
   const fonts = new Map();       // "sans-b" → FPDF_FONT
@@ -525,8 +525,9 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     els.addImage.onclick = () => { fileTarget = "add"; els.file.click(); };
     els.replace.onclick = () => { fileTarget = "replace"; els.file.click(); };
     els.file.onchange = async () => {
-      const f = els.file.files[0]; els.file.value = "";
+      let f = els.file.files[0]; els.file.value = "";
       if (!f) return;
+      if (prepareImage) { f = await prepareImage(f); if (!f) return; }
       try {
         if (fileTarget === "replace") { const it = selectedItem(); if (it) await replaceImage(selected.page, it, f); }
         else { pending = { file: f, widthPt: null }; setMode("placeImage"); }

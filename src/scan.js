@@ -326,7 +326,7 @@ async function render(page, long, srcCanvas) {
  * Opens the scanner with the given photos. Resolves to [{ bytes (JPEG), w, h }] in page order,
  * or null when cancelled. `more()` asks for more photos (File[]).
  */
-export function openScanner(files, { t, more, toast }) {
+export function openScanner(files, { t, more, toast, single = false }) {
   return new Promise((resolve) => {
     const pages = [];
     let cur = 0, paper = "a4";
@@ -337,7 +337,7 @@ export function openScanner(files, { t, more, toast }) {
     root.innerHTML = `
       <header class="scan-top">
         <div class="scan-title">${icon("scan-line", 20)}<h2>${t("scanTitle")}</h2><span class="muted" data-r="count"></span></div>
-        <div class="scan-actions"><button class="btn" data-r="cancel">${t("cancel")}</button><button class="btn primary" data-r="done">${icon("check", 16)}<span>${t("scanCreate")}</span></button></div>
+        <div class="scan-actions"><button class="btn" data-r="cancel">${t("cancel")}</button><button class="btn primary" data-r="done">${icon("check", 16)}<span>${t(single ? "scanInsert" : "scanCreate")}</span></button></div>
       </header>
       <div class="scan-main">
         <section class="scan-pane">
@@ -474,10 +474,10 @@ export function openScanner(files, { t, more, toast }) {
           if (i !== cur) { cur = i; show(); }
         };
         return b;
-      }), Object.assign(document.createElement("button"), {
+      }), ...(single ? [] : [Object.assign(document.createElement("button"), {
         className: "scan-add", innerHTML: `${icon("plus", 22)}<span>${t("scanAddPhotos")}</span>`,
         onclick: async () => { const list = await more(); if (list?.length) await add(list); },
-      }));
+      })]));
     }
 
     function show() {
@@ -485,7 +485,7 @@ export function openScanner(files, { t, more, toast }) {
       $("count").textContent = t("scanCount", { i: cur + 1, n: pages.length });
       for (const b of $("modes").children) b.classList.toggle("on", b.dataset.m === p.mode);
       $("paper").value = p.paper;
-      $("done").querySelector("span").textContent = t("scanCreate") + (pages.length > 1 ? ` (${pages.length})` : "");
+      $("done").querySelector("span").textContent = single ? t("scanInsert") : t("scanCreate") + (pages.length > 1 ? ` (${pages.length})` : "");
       drawPhoto(); strip(); preview();
     }
 
