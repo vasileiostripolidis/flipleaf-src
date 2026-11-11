@@ -887,6 +887,7 @@ export function installPro(app) {
     const a = before.length, b = out.length; // read sizes now: the viewer takes ownership of the buffers
     if (b >= a * 0.97) { toast(t("compressNone"), 5000); return; }
     await app.replaceDocumentData(out);
+    app.renameCompressed();
     toast(t("compressResult", { a: sizeStr(a), b: sizeStr(b), p: Math.round(100 - b * 100 / a) }), 6000);
   });
 

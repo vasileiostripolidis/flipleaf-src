@@ -228,12 +228,12 @@ fn save_pdf(app: AppHandle, request: Request, files: State<Files>) -> Result<(),
 async fn save_pdf_as(app: AppHandle, request: Request<'_>, files: State<'_, Files>) -> Result<Option<String>, String> {
     let bytes = body_bytes(&request)?;
     let name = header(&request, "x-name").unwrap_or_else(|| "document.pdf".into());
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("PDF", &["pdf"])
-        .set_file_name(&name)
-        .blocking_save_file();
+    let mut dialog = app.dialog().file().add_filter("PDF", &["pdf"]).set_file_name(&name);
+    // start in the folder of the original (e.g. for "<name>_compressed.pdf")
+    if let Some(dir) = header(&request, "x-dir").map(PathBuf::from).filter(|d| d.is_dir()) {
+        dialog = dialog.set_directory(dir);
+    }
+    let picked = dialog.blocking_save_file();
     let Some(mut path) = picked.and_then(|f| f.into_path().ok()) else {
         return Ok(None);
     };

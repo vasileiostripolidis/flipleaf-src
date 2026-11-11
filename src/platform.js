@@ -56,9 +56,11 @@ export async function saveToPath(bytes, path) {
 }
 
 /** "Save as" dialog. Resolves to the chosen path (desktop), "download" (web), or null if cancelled. */
-export async function saveAs(bytes, suggestedName) {
+export async function saveAs(bytes, suggestedName, dir = null) {
   if (isDesktop) {
-    return invoke("save_pdf_as", bytes, { headers: { "x-name": encodeURIComponent(suggestedName) } });
+    const headers = { "x-name": encodeURIComponent(suggestedName) };
+    if (dir) headers["x-dir"] = encodeURIComponent(dir);
+    return invoke("save_pdf_as", bytes, { headers });
   }
   return download(bytes, suggestedName, "application/pdf");
 }

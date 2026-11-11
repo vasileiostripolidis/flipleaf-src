@@ -13,7 +13,7 @@ const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, Spre
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.14.0";
+const VERSION = "1.15.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -106,7 +106,7 @@ async function stashActive() {
   const v = viewer.currentScaleValue;
   Object.assign(active, {
     data: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), name: doc.name, path: doc.path,
-    password: doc.password, dirty, view: { page: viewer.currentPageNumber, scale: isNaN(+v) ? v : +v, rotation: viewer.pagesRotation },
+    password: doc.password, saveDir: doc.saveDir, dirty, view: { page: viewer.currentPageNumber, scale: isNaN(+v) ? v : +v, rotation: viewer.pagesRotation },
   });
   rememberView();
   await closeDocument();
@@ -119,6 +119,7 @@ async function selectTabNow(tab) {
   const data = tab.data; tab.data = null;
   pendingView = tab.view || null;
   const ok = await loadDoc({ name: tab.name, data, path: tab.path, password: tab.password }, { dirty: tab.dirty });
+  if (ok) doc.saveDir = tab.saveDir || null;
   if (!ok) { tab.data = data; renderTabs(); }
   return ok;
 }
@@ -204,7 +205,7 @@ async function loadDoc({ name, data, path, password }, { dirty = false } = {}) {
   }
   if (doc.task !== loadingTask) { pdf.destroy(); return false; }
 
-  Object.assign(doc, { pdf, name, path, size, dirty: false, key: pdf.fingerprints[0] });
+  Object.assign(doc, { pdf, name, path, size, dirty: false, saveDir: null, key: pdf.fingerprints[0] });
   pdf.annotationStorage.onSetModified = () => setDirty(true);
 
   viewer.setDocument(pdf);
@@ -341,8 +342,9 @@ async function save({ as = false } = {}) {
     const bytes = await documentBytes();
     let where;
     if (!as && doc.path && platform.isDesktop) where = await platform.saveToPath(bytes, doc.path);
-    else where = await platform.saveAs(bytes, suggestedName());
+    else where = await platform.saveAs(bytes, suggestedName(), doc.saveDir);
     if (!where) return false; // cancelled
+    doc.saveDir = null;
     if (where !== "download") { doc.path = where; doc.name = where.split(/[\\/]/).pop(); $("docTitle").textContent = doc.name; }
     doc.pdf.annotationStorage.resetModified();
     setDirty(false);
@@ -355,6 +357,67 @@ async function save({ as = false } = {}) {
   }
 }
 $("btnSave").onclick = () => save();
+
+/**
+ * After "Reduce file size": by default the result becomes a new file, "<name>_compressed.pdf", so the
+ * original is not overwritten. Saving asks where to put it, starting in the original's folder.
+ */
+function renameCompressed() {
+  if (!store.get("compressRename", true)) return;
+  const suffix = store.get("compressSuffix", "_compressed") || "_compressed";
+  const m = doc.name.match(/^(.*?)(\.[^.]+)?$/), base = m[1] || "document", ext = m[2] || ".pdf";
+  if (base.endsWith(suffix)) return;
+  if (doc.path) doc.saveDir = doc.path.replace(/[\\/][^\\/]*$/, "") || null;
+  doc.path = null;
+  doc.name = base + suffix + ext;
+  $("docTitle").textContent = doc.name;
+  updateTitle();
+}
+
+/* ------------------------------------------------------------------ settings */
+
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function openSettings() {
+  const rename = store.get("compressRename", true), suffix = store.get("compressSuffix", "_compressed");
+  const body = document.createElement("div");
+  body.className = "settings";
+  const sel = (key, value, opts) => `<select class="field" data-k="${key}">${opts.map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  body.innerHTML = `
+    <section><h3>${esc(t("setCompress"))}</h3>
+      <label class="check-row"><input type="checkbox" data-k="compressRename"${rename ? " checked" : ""}><span>${esc(t("setCompressRename"))}</span></label>
+      <label class="frow"><span>${esc(t("setSuffix"))}</span><input class="field" data-k="compressSuffix" value="${esc(suffix)}" maxlength="40" spellcheck="false"></label>
+      <p class="hint" data-k="example"></p></section>
+    <section><h3>${esc(t("setPhotos"))}</h3>
+      <label class="frow"><span>${esc(t("setPhotoInsert"))}</span>${sel("imageScan", store.get("imageScan", "ask"), [["ask", t("setAsk")], ["scan", t("imgScan")], ["asis", t("imgAsIs")]])}</label></section>
+    <section><h3>${esc(t("setLook"))}</h3>
+      <label class="frow"><span>${esc(t("theme"))}</span>${sel("theme", store.get("theme", "system"), [["system", t("themeSystem")], ["light", t("themeLight")], ["dark", t("themeDark")]])}</label>
+      <label class="frow"><span>${esc(t("language"))}</span>${sel("lang", store.get("lang", "system"), [["system", t("langSystem")], ["en", "English"], ["el", "Ελληνικά"]])}</label></section>
+    ${platform.isDesktop ? `<section><h3>${esc(t("setApp"))}</h3>
+      <label class="check-row"><input type="checkbox" data-k="askCloseAll"${store.get("askCloseAll", true) ? " checked" : ""}><span>${esc(t("askCloseAll"))}</span></label>
+      ${updateChannel === "direct" ? `<label class="check-row"><input type="checkbox" data-k="autoUpdate"${store.get("autoUpdate", true) ? " checked" : ""}><span>${esc(t("autoUpdates"))}</span></label>` : ""}</section>` : ""}`;
+  const q = (k) => body.querySelector(`[data-k="${k}"]`);
+  // the open document's name without the extension and without an earlier suffix
+  let exampleBase = doc.pdf ? doc.name.replace(/\.[^.]+$/, "") : t("setExampleDoc");
+  if (suffix && exampleBase.endsWith(suffix)) exampleBase = exampleBase.slice(0, -suffix.length) || exampleBase;
+  const example = () => {
+    const s = q("compressSuffix").value.replace(/[\\/:*?"<>|]/g, "") || "_compressed";
+    q("example").textContent = t("setExample", { name: exampleBase + s + ".pdf" });
+    q("compressSuffix").disabled = !q("compressRename").checked;
+  };
+  q("compressSuffix").oninput = example; q("compressRename").onchange = example; example();
+  dialog({ title: t("settingsTitle"), body, buttons: [{ label: t("cancel"), value: "cancel", kind: "secondary" }, { label: t("save"), value: "ok", kind: "primary" }] }).then((v) => {
+    if (v !== "ok") return;
+    store.set("compressRename", q("compressRename").checked);
+    store.set("compressSuffix", q("compressSuffix").value.replace(/[\\/:*?"<>|]/g, "").trim() || "_compressed");
+    store.set("imageScan", q("imageScan").value);
+    if (q("askCloseAll")) store.set("askCloseAll", q("askCloseAll").checked);
+    if (q("autoUpdate")) store.set("autoUpdate", q("autoUpdate").checked);
+    setTheme(q("theme").value);
+    setLanguage(q("lang").value); // reloads the window when the language changes
+    toast(t("setSaved"));
+  });
+}
 
 /** Asks to save unsaved changes. Resolves true when it's OK to continue. */
 async function confirmDiscard() {
@@ -1181,8 +1244,7 @@ const MENUS = {
     "-",
     { label: "closeDoc", key: mod + "W", icon: "x", run: closeFile, when: hasDoc },
     { label: "closeOthers", icon: "x", run: () => closeOthers(), when: () => tabs.length > 1 },
-    { label: "askImageScan", check: store.get("imageScan", "ask") === "ask", run: () => store.set("imageScan", store.get("imageScan", "ask") === "ask" ? "asis" : "ask") },
-    { label: "askCloseAll", check: store.get("askCloseAll", true), run: () => store.set("askCloseAll", !store.get("askCloseAll", true)), when: () => platform.isDesktop },
+    { label: "settings", icon: "settings", key: mod + ",", run: openSettings },
     { label: "exit", key: platform.os === "mac" ? "⌘Q" : "Alt+F4", icon: "log-out", run: () => platform.quit(), when: () => platform.isDesktop },
   ],
   edit: () => [
@@ -1372,7 +1434,7 @@ $("btnEditPdf").onclick = () => toggleEditPdf();
 
 const pro = installPro({
   t, toast, icon, dialog, busy, platform, viewer, eventBus, pdfjsLib, LANG, store, doc,
-  documentBytes, replaceDocumentData, openData, addImage, signDialog,
+  documentBytes, replaceDocumentData, openData, addImage, signDialog, renameCompressed,
   showCommentsPanel: () => { toggleSidebar(true); showPanel("comments"); },
 });
 $("btnAllTools").onclick = () => pro.allTools();
@@ -1470,6 +1532,7 @@ addEventListener("keydown", (e) => {
   if (mod && key === "d") { e.preventDefault(); showProperties(); return; }
   if (mod && key === "e") { e.preventDefault(); toggleEditPdf(true); return; }
   if (mod && key === "w") { e.preventDefault(); closeFile(); return; }
+  if (mod && e.key === ",") { e.preventDefault(); openSettings(); return; }
   if (e.ctrlKey && (e.key === "Tab" || e.key === "PageDown" || e.key === "PageUp")) { e.preventDefault(); cycleTab(e.key === "PageUp" || (e.key === "Tab" && e.shiftKey) ? -1 : 1); return; }
   if (mod && key === "q" && platform.isDesktop) { e.preventDefault(); platform.quit(); return; }
   if (mod && e.shiftKey && key === "y") { e.preventDefault(); reading ? stopReading() : readAloud(); return; }

@@ -470,3 +470,13 @@ body.presenting .pdfViewer .page { box-shadow: none; }
 }
 .check-row { display: flex; align-items: center; gap: 9px; margin-top: 12px; cursor: pointer; }
 .check-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); }
+
+/* ---------- settings ---------- */
+.settings { display: grid; gap: 16px; min-width: min(480px, 82vw); }
+.settings section { display: grid; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.settings section:last-child { border-bottom: 0; padding-bottom: 0; }
+.settings h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
+.settings .check-row { margin-top: 0; }
+.settings .frow { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(0, 1.2fr); align-items: center; gap: 12px; }
+.settings .hint { margin: -2px 0 0; font-size: 12.5px; color: var(--muted); }
+.settings input.field:disabled { opacity: .5; }
