@@ -5,15 +5,16 @@ import { hydrateIcons, icon } from "./icons.js";
 import { t, shortcut, translateDom, LANG } from "./i18n.js";
 import * as platform from "./platform.js";
 import { createEditor } from "./editor.js";
+import { createSearch } from "./search.js";
 import { installPro } from "./pro.js";
 import { createSignatureStudio, urlToFile } from "./signature.js";
 
 globalThis.pdfjsLib = pdfjsLib; // the viewer components expect it here
-const { EventBus, PDFViewer, PDFLinkService, PDFFindController, ScrollMode, SpreadMode, LinkTarget } =
+const { EventBus, PDFViewer, PDFLinkService, ScrollMode, SpreadMode, LinkTarget } =
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.15.0";
+const VERSION = "1.16.0";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -44,13 +45,11 @@ $("findInput").placeholder = t("findPlaceholder");
 const container = $("viewerContainer");
 const eventBus = new EventBus();
 const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK, externalLinkRel: "noopener noreferrer nofollow" });
-const findController = new PDFFindController({ eventBus, linkService, updateMatchesCountOnProgress: true });
 const viewer = new PDFViewer({
   container,
   viewer: $("viewer"),
   eventBus,
   linkService,
-  findController,
   annotationMode: AnnotationMode.ENABLE_FORMS,
   annotationEditorMode: ED.NONE,
   annotationEditorHighlightColors: "yellow=#FFF066,green=#7CF2A6,blue=#8ADBFF,pink=#FFB3D9,red=#FF7A7A",
@@ -222,6 +221,9 @@ async function loadDoc({ name, data, path, password }, { dirty = false } = {}) {
   $("pageInput").value = 1; // the view restore below moves it if needed
 
   thumbs.build();
+  search.reset(doc.pdf);
+  // read the text for "Find" in the background, so the first search is instant too
+  { const p = doc.pdf; setTimeout(() => { if (doc.pdf === p && p.numPages <= 1500) search.warm(); }, 1200); }
   buildOutline();
   if (dirty) setDirty(true);
   if (!password) pdf.getFieldObjects().then((f) => { if (f && Object.keys(f).length) toast(t("forms"), 5000); }).catch(() => {});
@@ -233,6 +235,7 @@ async function loadDoc({ name, data, path, password }, { dirty = false } = {}) {
 
 async function closeDocument() {
   stopReading();
+  search.reset(null);
   setTool("select");
   if (doc.task) { const task = doc.task; doc.task = null; await task.destroy().catch(() => {}); }
   doc.pdf = null;
@@ -770,44 +773,73 @@ async function addImageAt(file, pageIndex, px, py, widthPx) {
 /* ================================================================== find */
 
 const findInput = $("findInput");
+const search = createSearch({ viewer, container, t, onUpdate: () => showFind() });
+eventBus.on("textlayerrendered", ({ pageNumber }) => search.onTextLayer(pageNumber));
+const findOpts = () => ({ matchCase: $("findCase").checked, wholeWords: $("findWords").checked, matchAccents: $("findDiacritics").checked, highlightAll: $("findAll").checked });
+
 function openFind() {
   if (!doc.pdf) return;
   $("findPanel").hidden = false;
-  const sel = getSelection()?.toString().trim();
-  if (sel && sel.length < 80) findInput.value = sel;
+  search.warm();
+  const sel = getSelection()?.toString().trim().replace(/\s+/g, " ");
+  if (sel && sel.length < 120 && !findInput.contains(document.activeElement)) findInput.value = sel;
   findInput.focus(); findInput.select();
-  if (findInput.value) runFind("");
+  if (findInput.value) search.search(findInput.value, findOpts());
+  showFind();
 }
 function closeFind() {
   $("findPanel").hidden = true;
-  eventBus.dispatch("findbarclose", { source: null });
+  search.clear();
   container.focus();
 }
-function runFind(type, findPrevious = false) {
-  eventBus.dispatch("find", {
-    source: null, type, query: findInput.value,
-    caseSensitive: $("findCase").checked, entireWord: $("findWords").checked,
-    highlightAll: $("findAll").checked, matchDiacritics: $("findDiacritics").checked, findPrevious,
-  });
+function showFind() {
+  const st = search.state();
+  const has = !!findInput.value.trim();
+  const reading = st.ready < st.of;
+  $("findCount").textContent = !has ? "" : st.total ? t("findOf", { n: st.current + 1 || "–", total: st.total + (st.capped ? "+" : "") }) : reading ? "…" : t("findNone");
+  $("findPrev").disabled = $("findNext").disabled = !st.total;
+  $("findInput").classList.toggle("none", has && !st.total && !reading);
+  const status = $("findStatus");
+  status.textContent = !has ? (reading && st.ready ? t("findReading", { p: Math.round((st.ready * 100) / st.of) }) : "") :
+    st.total ? t("findPages", { n: st.pages }) + (reading ? " · " + t("findReading", { p: Math.round((st.ready * 100) / st.of) }) : "") : reading ? t("findReading", { p: Math.round((st.ready * 100) / st.of) }) : "";
+  const list = $("findList");
+  list.hidden = !has || !st.total;
+  if (list.hidden) { list.replaceChildren(); return; }
+  // results with their context, grouped by page
+  const frag = document.createDocumentFragment();
+  let page = 0;
+  for (const r of st.list) {
+    if (r.page !== page) { page = r.page; const h = document.createElement("div"); h.className = "fhead"; h.textContent = t("pageN", { n: page }); frag.append(h); }
+    const b = document.createElement("button");
+    b.className = "fres" + (r.k === st.current ? " on" : "");
+    b.append(document.createTextNode(r.before));
+    const m = document.createElement("mark"); m.textContent = r.match; b.append(m);
+    b.append(document.createTextNode(r.after));
+    b.onclick = () => search.go(r.k);
+    frag.append(b);
+  }
+  if (st.more) { const more = document.createElement("div"); more.className = "fmore"; more.textContent = t("findMore", { n: st.more }); frag.append(more); }
+  list.replaceChildren(frag);
+  list.querySelector(".fres.on")?.scrollIntoView({ block: "nearest" });
 }
 let findTimer;
-findInput.addEventListener("input", () => { clearTimeout(findTimer); findTimer = setTimeout(() => runFind(""), 200); });
+findInput.addEventListener("input", () => { clearTimeout(findTimer); findTimer = setTimeout(() => search.search(findInput.value, findOpts()), 60); });
 findInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); runFind("again", e.shiftKey); }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    // the first Enter after typing shows the first match; the next ones go through them
+    if (search.state(0).query !== findInput.value) { clearTimeout(findTimer); search.search(findInput.value, findOpts()); }
+    else search.step(e.shiftKey ? -1 : 1);
+  }
   else if (e.key === "Escape") { e.preventDefault(); closeFind(); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); search.step(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); search.step(-1); }
 });
-$("findNext").onclick = () => runFind("again");
-$("findPrev").onclick = () => runFind("again", true);
+$("findNext").onclick = () => search.step(1);
+$("findPrev").onclick = () => search.step(-1);
 $("findClose").onclick = closeFind;
 $("btnFind").onclick = () => ($("findPanel").hidden ? openFind() : closeFind());
-for (const [id, type] of [["findAll", "highlightallchange"], ["findCase", "casesensitivitychange"], ["findWords", "entirewordchange"], ["findDiacritics", "diacriticmatchingchange"]]) {
-  $(id).onchange = () => runFind(type);
-}
-const showCount = ({ current, total }) => {
-  $("findCount").textContent = !findInput.value ? "" : total ? (total > 1000 ? t("findMany", { total: 1000 }) : t("findOf", { n: current, total })) : t("findNone");
-};
-eventBus.on("updatefindmatchescount", ({ matchesCount }) => showCount(matchesCount));
-eventBus.on("updatefindcontrolstate", ({ matchesCount }) => matchesCount && showCount(matchesCount));
+for (const id of ["findAll", "findCase", "findWords", "findDiacritics"]) $(id).onchange = () => search.setOptions(findOpts());
 
 /* ================================================================== sidebar: thumbnails & bookmarks */
 
@@ -1455,6 +1487,8 @@ async function replaceDocumentData(bytes) {
   $("pageCount").textContent = "/ " + pdf.numPages;
   old?.destroy().catch(() => {});
   thumbs.build();
+  search.reset(doc.pdf);
+  if (!$("findPanel").hidden && findInput.value) search.search(findInput.value, findOpts());
   buildOutline();
   setDirty(true);
 }
