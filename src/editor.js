@@ -27,13 +27,14 @@ async function loadFontBytes(file) {
   return fontBytes.get(file);
 }
 
-export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCancel, onChange, pickSignature, prepareImage }) {
+export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCancel, onChange, pickSignature, prepareImage, reload, onRestore }) {
   let doc = 0, docPtr = 0, form = 0, formInfo = 0;
   const pages = new Map();       // index → { page, text }
   const fonts = new Map();       // "sans-b" → FPDF_FONT
   const modified = new Set();    // page indexes re-rendered by PDFium
   const undo = [];
   let active = false, selected = null, mode = "select"; // "select" | "addText" | "placeImage"
+  let originalBytes = null, pagesChanged = false; // pages deleted: the viewer shows the edited document itself
   let pending = null; // { file, widthPt } waiting for a click
   const ui = buildToolbar();
 
@@ -159,6 +160,25 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     for (const i of keep) modified.add(i);
     selected = null;
     ui.undo.disabled = !undo.length;
+    if (pagesChanged) { modified.clear(); await reload(bytes); }
+    redrawAll();
+  }
+
+  /** Deletes a whole page. The viewer is reloaded with the result (Undo brings the page back). */
+  async function deletePage(i) {
+    if (P.FPDF_GetPageCount(doc) <= 1) { toast(t("editLastPage")); return; }
+    snapshot();
+    const before = save();
+    close();
+    await open(before);
+    P.FPDFPage_Delete(doc, i);
+    const after = save();
+    close();
+    await open(after);
+    modified.clear(); selected = null; pagesChanged = true;
+    await reload(after);
+    onChange?.();
+    toast(t("editPageDeleted", { n: i + 1 }), 4000);
     redrawAll();
   }
 
@@ -338,6 +358,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     layer.replaceChildren();
     layer.classList.toggle("adding", mode === "addText");
     if (modified.has(i)) renderPreview(i, pv, layer);
+    const del = document.createElement("button");
+    del.className = "epage-del";
+    del.innerHTML = `${icon("trash-2", 15)}<span></span>`;
+    del.querySelector("span").textContent = t("editDeletePage");
+    del.title = t("editDeletePageN", { n: i + 1 });
+    del.addEventListener("pointerdown", (e) => e.stopPropagation());
+    del.onclick = (e) => { e.stopPropagation(); deletePage(i); };
+    layer.append(del);
     for (const item of objects(i)) {
       const r = screenRect(pv, item.bounds);
       const box = document.createElement("div");
@@ -512,6 +540,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <div class="sep"></div>
       <button class="btn sm secondary" data-e="replace">${icon("image-plus", 16)}<span>${t("editReplace")}</span></button>
       <button class="btn icon sm" data-e="delete" title="${t("editDelete")}">${icon("trash-2", 16)}</button>
+      <button class="btn sm secondary" data-e="delPage" title="${t("editDeletePageHint")}">${icon("trash-2", 16)}<span>${t("editDeletePage")}</span></button>
       <button class="btn icon sm" data-e="undo" title="${t("undo")}">${icon("undo-2", 16)}</button>
       <span class="hint muted" data-e="hint"></span>
       <div class="spacer"></div>
@@ -519,7 +548,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <button class="btn primary sm" data-e="done">${t("done")}</button>
       <input type="file" accept="image/*" hidden data-e="file">`;
     const q = (n) => bar.querySelector(`[data-e="${n}"]`);
-    const els = Object.fromEntries(["addText", "addImage", "addSig", "family", "size", "bold", "italic", "color", "replace", "delete", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
+    const els = Object.fromEntries(["addText", "addImage", "addSig", "family", "size", "bold", "italic", "color", "replace", "delete", "delPage", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
     let fileTarget = "add";
     els.addText.onclick = () => setMode(mode === "addText" ? "select" : "addText");
     els.addImage.onclick = () => { fileTarget = "add"; els.file.click(); };
@@ -538,6 +567,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       if (file) { pending = { file, widthPt: 150 }; setMode("placeImage"); }
     };
     els.delete.onclick = () => deleteSelected();
+    els.delPage.onclick = () => deletePage(viewer.currentPageNumber - 1);
     els.undo.onclick = () => doUndo();
     els.cancel.onclick = () => exit(false);
     els.done.onclick = () => exit(true);
@@ -620,6 +650,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   /* ---------------------------------------------------------- session */
   async function enter(bytes, pw = "") {
     password = pw || "";
+    originalBytes = bytes.slice(); pagesChanged = false;
     await open(bytes);
     active = true; selected = null; mode = "select"; undo.length = 0; modified.clear();
     document.body.classList.add("editing");
@@ -645,7 +676,11 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     document.getElementById("editBar").hidden = true;
     close();
     undo.length = 0; modified.clear(); selected = null;
-    if (bytes) await onApply(bytes); else onCancel?.();
+    const restore = !apply && pagesChanged ? originalBytes : null;
+    originalBytes = null; pagesChanged = false;
+    if (bytes) await onApply(bytes);
+    else if (restore) await onRestore?.(restore);
+    else onCancel?.();
   }
 
   return {

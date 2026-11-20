@@ -1445,7 +1445,10 @@ const editor = createEditor({
   prepareImage: (f) => prepareImage(f),
   onChange: () => setDirty(true),
   onApply: (bytes) => replaceDocumentData(bytes),
+  reload: (bytes) => replaceDocumentData(bytes.slice()),
+  onRestore: (bytes) => replaceDocumentData(bytes, { dirty: editWasDirty }),
 });
+let editWasDirty = false;
 async function toggleEditPdf(on = !editor.active) {
   if (!doc.pdf) return;
   if (!on) return editor.exit(true);
@@ -1455,6 +1458,7 @@ async function toggleEditPdf(on = !editor.active) {
   const overlay = busy(t("editLoading"));
   try {
     const bytes = await documentBytes();
+    editWasDirty = doc.dirty;
     await editor.enter(bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes), doc.password);
   } catch (e) {
     toast(t("failed", { err: e?.message || e }), 6000);
@@ -1472,7 +1476,7 @@ const pro = installPro({
 $("btnAllTools").onclick = () => pro.allTools();
 
 /** Loads new bytes for the open document (after editing), keeping page, zoom and rotation. */
-async function replaceDocumentData(bytes) {
+async function replaceDocumentData(bytes, { dirty = true } = {}) {
   const keep = { page: viewer.currentPageNumber, scale: viewer.currentScaleValue, rotation: viewer.pagesRotation, name: doc.name, path: doc.path };
   const task = pdfjsLib.getDocument({ data: bytes, ...LOAD_OPTIONS, password: doc.password });
   const size = bytes.byteLength;
@@ -1490,7 +1494,7 @@ async function replaceDocumentData(bytes) {
   search.reset(doc.pdf);
   if (!$("findPanel").hidden && findInput.value) search.search(findInput.value, findOpts());
   buildOutline();
-  setDirty(true);
+  setDirty(dirty);
 }
 
 function busy(message) {

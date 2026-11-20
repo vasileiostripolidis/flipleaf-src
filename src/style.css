@@ -497,3 +497,8 @@ html[data-theme="dark"] .fl-hits { mix-blend-mode: normal; }
 .findlist mark { background: rgba(255, 200, 0, .55); color: inherit; border-radius: 2px; padding: 0 1px; font-weight: 600; }
 .findlist .fmore { font-size: 12px; color: var(--muted); padding: 6px 8px; }
 #findInput::-webkit-search-cancel-button { display: none; }
+.epage-del { position: absolute; top: 8px; right: 8px; z-index: 3; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 1px solid color-mix(in srgb, #d93025 35%, var(--line)); border-radius: 9px; background: color-mix(in srgb, var(--surface) 92%, transparent); color: #c5221f; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .12); opacity: 0; transition: opacity .15s ease, background .12s ease; }
+.edit-layer:hover .epage-del, .epage-del:focus-visible { opacity: 1; }
+.epage-del:hover { background: #fdecea; }
+html[data-theme="dark"] .epage-del { color: #ff8a80; }
+html[data-theme="dark"] .epage-del:hover { background: color-mix(in srgb, #d93025 20%, var(--surface)); }
