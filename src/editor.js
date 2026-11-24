@@ -17,7 +17,7 @@ const MAX_UNDO = 20;
 const BASE = new URL("./vendor/", import.meta.url).href;
 
 import { getPdfium, M, malloc, free, heap, putBytes, wstr as putString, floats, ints, readFloats } from "./pdfium.js";
-import { planGap, findGaps, planInsert, insertPoints, planBreak } from "./reflow.js";
+import { planGap, findGaps, planInsert, insertPoints } from "./reflow.js";
 let P = null; // wrapped PDFium module
 
 const FONT_FILES = {
@@ -465,12 +465,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const pv = pageView(i), rect = layer.getBoundingClientRect(), y = e.clientY - rect.top;
     const { spots, line } = spotsOf(i);
     let best = null;
+    const outer = spots.some((sp) => !sp.inner && !sp.first);
     for (const sp of spots) {
       if (mode === "pageBreak" && sp.first) continue;
+      if (sp.inner && outer) continue; // between lines that belong together (e.g. music signs and their words)
       const [, py] = pv.viewport.convertToViewportPoint(0, sp.at);
       if (!best || Math.abs(py - y) < Math.abs(best.py - y)) best = { py, ...sp };
     }
-    return best && Math.abs(best.py - y) < 60 ? { ...best, line } : null;
+    return best && Math.abs(best.py - y) < 200 ? { ...best, line } : null;
   }
   function guide(layer) {
     let g = layer.querySelector(".einsert");
@@ -517,76 +519,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     layer.addEventListener("pointerup", up);
     layer.addEventListener("pointercancel", up);
   }
-  function releasePages() {
-    for (const { page, text } of pages.values()) {
-      if (text) P.FPDFText_ClosePage(text);
-      if (form) P.FORM_OnBeforeClosePage(page, form);
-      P.FPDF_ClosePage(page);
-    }
-    pages.clear();
-  }
-  /** Page break: the rows below "at" go to a new page (a copy of this one with only them) right after it. */
-  async function pageBreak(i, at) {
-    snapshot();
-    const n = P.FPDF_GetPageCount(doc), lo = Math.max(0, i - 4), hi = Math.min(n - 1, i + 4);
-    const { pages: layout } = layoutOf(lo, hi);
-    const plan = planBreak(layout, { page: i - lo, at });
-    if (!plan.ok) { undo.pop(); ui.undo.disabled = !undo.length; toast(t("editBreakNoSpot")); return; }
-    const kOf = (id) => +id.split(":")[1];
-    const below = new Set(plan.below.map(kOf)), keep = new Map([...plan.keep].map(([id, dy]) => [kOf(id), dy]));
-    const count = P.FPDFPage_CountObjects(getPage(i).page);
-    const bytes = save(); // writes every changed page into the document
-    releasePages();
-    // the copy of this page, right after it
-    const ptr = putBytes(bytes), src = P.FPDF_LoadMemDocument(ptr, bytes.length, password);
-    const ix = ints(i);
-    const okImport = src && P.FPDF_ImportPagesByIndex(doc, src, ix, 1, i + 1);
-    free(ix);
-    if (src) P.FPDF_CloseDocument(src);
-    free(ptr);
-    const orig = getPage(i).page;
-    let copy = okImport ? getPage(i + 1).page : 0;
-    if (copy && P.FPDFPage_CountObjects(copy) === count) {
-      for (let k = count - 1; k >= 0; k--) {
-        const o = P.FPDFPage_GetObject(copy, k);
-        if (!keep.has(k)) { if (P.FPDFPage_RemoveObject(copy, o)) P.FPDFPageObj_Destroy(o); }
-        else if (keep.get(k)) { P.FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, keep.get(k)); P.FPDFPageObj_TransformClipPath(o, 1, 0, 0, 1, 0, keep.get(k)); }
-      }
-      for (let k = count - 1; k >= 0; k--) if (below.has(k)) removeObject(orig, P.FPDFPage_GetObject(orig, k));
-    } else {
-      // could not copy the page: a blank page of the same size gets the rows
-      if (okImport) { releasePages(); P.FPDFPage_Delete(doc, i + 1); }
-      const o0 = getPage(i).page;
-      const blank = P.FPDFPage_New(doc, i + 1, P.FPDF_GetPageWidthF(o0), P.FPDF_GetPageHeightF(o0));
-      if (blank) P.FPDF_ClosePage(blank);
-      releasePages();
-      const a = getPage(i).page, b = getPage(i + 1).page;
-      const objs = [...below].sort((x, y) => y - x).map((k) => P.FPDFPage_GetObject(a, k));
-      for (const o of objs.reverse()) {
-        if (!P.FPDFPage_RemoveObject(a, o)) continue;
-        P.FPDFPage_InsertObject(b, o);
-        const d = [...plan.keep.values()].find((v) => v) || 0;
-        if (d) { P.FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, d); P.FPDFPageObj_TransformClipPath(o, 1, 0, 0, 1, 0, d); }
-      }
-    }
-    P.FPDFPage_GenerateContent(getPage(i).page);
-    P.FPDFPage_GenerateContent(getPage(i + 1).page);
-    gapCache.clear();
-    const out = save();
-    close();
-    await open(out);
-    modified.clear(); clearSelection(); pagesChanged = true;
-    await reload(out);
-    onChange?.();
-    toast(t("editBreakDone", { n: i + 2 }), 4000);
-    redrawAll();
-  }
+  /** Page break: what comes after the point continues at the top of the next page (the pages after it reflow). */
+  async function pageBreak(i, at) { await insertSpace(i, at, 0, true); }
 
-  async function insertSpace(i, at, height) {
+  async function insertSpace(i, at, height, pageBreak = false) {
     snapshot();
     const { pages: layout, handles } = layoutOf();
-    const plan = planInsert(layout, { page: i, at, height });
-    if (!plan.ok) { undo.pop(); ui.undo.disabled = !undo.length; toast(t("editSpaceNoSpot")); return; }
+    const plan = planInsert(layout, { page: i, at, height, pageBreak });
+    if (!plan.ok) { undo.pop(); ui.undo.disabled = !undo.length; toast(t(pageBreak ? "editBreakNoSpot" : "editSpaceNoSpot")); return; }
     const n = P.FPDF_GetPageCount(doc);
     for (const [k, np] of plan.newPages.entries()) { const pg = P.FPDFPage_New(doc, n + k, np.width, np.height); if (pg) P.FPDF_ClosePage(pg); }
     const touched = new Set([i]);
@@ -610,7 +550,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       await reload(out);
     } else changed(i);
     onChange?.();
-    toast(plan.newPages.length ? t("editSpaceAddedPages", { n: plan.newPages.length }) : t("editSpaceAdded"), 4000);
+    toast(pageBreak ? t("editBreakDone", { n: i + 2 }) : plan.newPages.length ? t("editSpaceAddedPages", { n: plan.newPages.length }) : t("editSpaceAdded"), 4000);
     redrawAll();
   }
 

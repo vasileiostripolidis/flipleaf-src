@@ -22,10 +22,10 @@ const median = (xs, fallback) => { if (!xs.length) return fallback; const s = [.
 const hasText = (row) => row.items.some((o) => o.kind === "text" && !o.blank);
 
 /** Groups objects into rows: objects that share most of their height belong to the same row. */
-export function rowsOf(objs) {
-  const solid = objs.filter((o) => !o.blank).sort((a, b) => b.t - a.t || a.l - b.l);
+/** Clusters objects into rows by vertical overlap (top to bottom). */
+function cluster(list) {
   const rows = [];
-  for (const o of solid) {
+  for (const o of [...list].sort((a, b) => b.t - a.t || a.l - b.l)) {
     const h = Math.max(o.t - o.b, 0.5);
     let row = null;
     for (let j = rows.length - 1; j >= 0 && j >= rows.length - 3; j--) {
@@ -35,6 +35,32 @@ export function rowsOf(objs) {
     if (row) { row.items.push(o); row.t = Math.max(row.t, o.t); row.b = Math.min(row.b, o.b); }
     else rows.push({ t: o.t, b: o.b, items: [o] });
   }
+  return rows;
+}
+const nearestRow = (rows, o) => {
+  const c = (o.t + o.b) / 2;
+  let best = rows[0], d = Infinity;
+  for (const r of rows) { const dd = c > r.t ? c - r.t : c < r.b ? r.b - c : 0; if (dd < d) { d = dd; best = r; } }
+  return best;
+};
+
+export function rowsOf(objs) {
+  const solid = objs.filter((o) => !o.blank);
+  // small marks (accents, music signs, superscripts) placed between lines would otherwise chain the lines
+  // above and below them into one: they are grouped separately and join the nearest line afterwards
+  const hs = solid.filter((o) => o.kind === "text").map((o) => o.t - o.b).sort((a, b) => a - b);
+  const typical = hs.length ? hs[Math.floor(hs.length / 2)] : 0;
+  const small = (o) => o.kind === "text" && typical > 0 && o.t - o.b < typical * 0.55;
+  const rows = cluster(solid.filter((o) => !small(o)));
+  const minor = cluster(solid.filter(small));
+  const width = Math.max(1, ...solid.map((o) => o.r)) - Math.min(...solid.map((o) => o.l), 0);
+  const loose = [];
+  for (const m of minor) {
+    const w = Math.max(...m.items.map((o) => o.r)) - Math.min(...m.items.map((o) => o.l));
+    if (m.items.length >= 3 && w > width * 0.25) rows.push(m); // a line of small text of its own
+    else loose.push(...m.items);
+  }
+  rows.sort((a, b) => b.t - a.t);
   // rows that grew into each other become one
   for (let j = rows.length - 1; j > 0; j--) {
     const a = rows[j - 1], c = rows[j], ov = Math.min(a.t, c.t) - Math.max(a.b, c.b);
@@ -52,14 +78,10 @@ export function rowsOf(objs) {
     into.items.push(...r.items); into.t = Math.max(into.t, r.t); into.b = Math.min(into.b, r.b);
     rows.splice(j, 1);
   }
-  // spaces and invisible text go with the nearest row
-  for (const o of objs) {
-    if (!o.blank || !rows.length) continue;
-    const c = (o.t + o.b) / 2;
-    let best = rows[0], d = Infinity;
-    for (const r of rows) { const dd = c > r.t ? c - r.t : c < r.b ? r.b - c : 0; if (dd < d) { d = dd; best = r; } }
-    best.items.push(o);
-  }
+  // small marks join the nearest line (and widen it); spaces and invisible text go with it without widening
+  if (!rows.length && loose.length) rows.push(...cluster(loose).map((r) => r)), loose.length = 0;
+  for (const o of loose) { const r = nearestRow(rows, o); r.items.push(o); r.t = Math.max(r.t, o.t); r.b = Math.min(r.b, o.b); }
+  for (const o of objs) if (o.blank && rows.length) nearestRow(rows, o).items.push(o);
   for (const r of rows) {
     r.l = Math.min(...r.items.map((o) => o.l)); r.r = Math.max(...r.items.map((o) => o.r));
     r.sig = sigOf(r.items.filter((o) => o.kind === "text").sort((a, b) => a.l - b.l).map((o) => o.text || "").join(""));
@@ -89,8 +111,12 @@ function analyze(pages, phantomPage = -1, phantomBoxes = []) {
     const repeats = (r) => {
       const numberOnly = r.sig && /^[#\-–—.·|/()\[\]σελιδαpage]*$/.test(r.sig) && r.sig.includes("#");
       if (numberOnly) return true;
-      return others.some((q) => rows[q].some((x) => Math.abs(x.t - r.t) < 3 && Math.abs(x.b - r.b) < 3 &&
-        (r.sig || x.sig ? dice(r.sig, x.sig) >= 0.6 : Math.abs(x.l - r.l) < 3 && Math.abs(x.r - r.r) < 3)));
+      // the same place, the same width or alignment, (nearly) the same text — on at least two other pages
+      const same = (x) => Math.abs(x.t - r.t) < 3 && Math.abs(x.b - r.b) < 3 &&
+        (Math.abs(x.l - r.l) < 6 || Math.abs(x.r - r.r) < 6 || Math.abs((x.l + x.r) - (r.l + r.r)) < 12) &&
+        (r.sig || x.sig ? dice(r.sig, x.sig) >= 0.8 : Math.abs(x.l - r.l) < 3 && Math.abs(x.r - r.r) < 3);
+      const hits = others.filter((q) => rows[q].some(same)).length;
+      return hits >= Math.min(2, others.length);
     };
     const apart = (a, b) => !b || a.b - b.t > Math.max(1.8 * lineGap, 6) || b.b - a.t > Math.max(1.8 * lineGap, 6);
     for (let j = 0; j < rs.length; j++) {
@@ -125,7 +151,11 @@ function analyze(pages, phantomPage = -1, phantomBoxes = []) {
   // headings: rows with text clearly bigger than the body text
   const sizes = body.flat().flatMap((r) => r.items.filter((o) => o.kind === "text" && !o.blank && o.size > 0).map((o) => o.size));
   const textSize = median(sizes, 0);
-  const isHeading = (r) => hasText(r) && (textSize ? Math.max(...r.items.map((o) => o.size || 0)) > textSize * 1.25 : r.t - r.b > rowH * 1.5);
+  const big = (r) => hasText(r) && (textSize ? Math.max(...r.items.map((o) => o.size || 0)) > textSize * 1.25 : r.t - r.b > rowH * 1.5);
+  // headings are the exception; when big rows are common (music: the signs are bigger than the words) they are just text
+  const textRows = body.flat().filter(hasText);
+  const headingsAreRare = textRows.filter(big).length <= Math.max(2, textRows.length * 0.15);
+  const isHeading = (r) => headingsAreRare && big(r);
   /** Width of the first word of a row (to tell whether it would have fitted on the line before). */
   const firstWord = (r) => {
     const items = r.items.filter((o) => o.kind === "text" && !o.blank).sort((x, y) => x.l - y.l);
@@ -146,7 +176,14 @@ function analyze(pages, phantomPage = -1, phantomBoxes = []) {
   const newParagraph = (a, b) => b.l > leftEdge + 8 || a.r + firstWord(b) + 4 < rightEdge;
   /** The spacing two rows should have when they follow each other. */
   const spacing = (a, b) => (isHeading(a) || isHeading(b) || (hasText(a) && hasText(b) && newParagraph(a, b)) ? paraSp : lineSp);
-  return { n, rows, furniture, body, tops, bottom, lineSp, paraSp, rowH, isHeading, spacing };
+  // lines that belong together (music: the signs and the words under them, set close to each other while
+  // the pairs are set apart) — only when the spacing clearly comes in two kinds
+  const sorted = bodyGaps.filter((d) => d > -50).sort((a, b) => a - b);
+  const p75 = sorted.length ? sorted[Math.floor(sorted.length * 0.75)] : 0, tight = p75 * 0.3;
+  const share = sorted.length ? sorted.filter((d) => d < tight).length / sorted.length : 0;
+  const pairs = p75 > 8 && share > 0.25 && share < 0.75;
+  const bound = (a, b) => pairs && a.b - b.t < tight;
+  return { bound, n, rows, furniture, body, tops, bottom, lineSp, paraSp, rowH, isHeading, spacing };
 }
 
 /**
@@ -182,7 +219,7 @@ export function planGap(pages, gap) {
   const n = pages.length;
   const fail = { ok: false, moves: new Map(), drop: [], removePages: [] };
   if (!gap || gap.page < 0 || gap.page >= n || (!gap.boxes?.length && typeof gap.at !== "number")) return fail;
-  const { body, tops, bottom, isHeading, spacing } = analyze(pages, gap.boxes ? gap.page : -1, gap.boxes || []);
+  const { body, tops, bottom, isHeading, spacing, bound } = analyze(pages, gap.boxes ? gap.page : -1, gap.boxes || []);
 
   const moves = new Map(), drop = [];
   const shiftRow = (r, page, dy) => {
@@ -251,6 +288,7 @@ export function planGap(pages, gap) {
       if (h === undefined) break;
       take = h;
     }
+    while (take > 0 && take < src.length && bound(src[take - 1], src[take])) take--; // keep pairs together
     if (!take) break;
     for (const r of src.slice(0, take)) shiftRow(r, cur, dy);
     dst.push(...src.splice(0, take));
@@ -273,12 +311,12 @@ export function planGap(pages, gap) {
 
 /** Where new space can be opened on page i: the boundaries between rows (PDF heights), and one line's height. */
 export function insertPoints(pages, i) {
-  const { body, lineSp, rowH } = analyze(pages);
+  const { body, lineSp, rowH, bound } = analyze(pages);
   // spots: { at, space } — space is the room there is now between the two rows
   const own = body[i] || [], spots = [];
   if (own.length) {
     spots.push({ at: own[0].t + Math.min(lineSp, 4), space: 0, first: true });
-    for (let j = 1; j < own.length; j++) spots.push({ at: (own[j - 1].b + own[j].t) / 2, space: Math.max(0, own[j - 1].b - own[j].t) });
+    for (let j = 1; j < own.length; j++) spots.push({ at: (own[j - 1].b + own[j].t) / 2, space: Math.max(0, own[j - 1].b - own[j].t), inner: bound(own[j - 1], own[j]) });
   }
   return { spots, line: rowH + lineSp };
 }
@@ -288,10 +326,17 @@ export function insertPoints(pages, i) {
  * whatever no longer fits moves on to the next pages (new pages are added at the end if needed).
  * Returns { ok, moves, newPages: [{ width, height }] } — moves may point at the new pages (n, n+1…).
  */
-export function planInsert(pages, { page, at, height }) {
+export function planInsert(pages, { page, at, height, pageBreak = false }) {
   const fail = { ok: false, moves: new Map(), newPages: [] };
-  if (!(height > 0) || page < 0 || page >= pages.length) return fail;
-  const { n, body, tops, bottom, isHeading, spacing } = analyze(pages);
+  if (page < 0 || page >= pages.length) return fail;
+  const { n, body, tops, bottom, isHeading, spacing, bound } = analyze(pages);
+  if (pageBreak) {
+    // page break: just enough space that everything after the point goes to the next page
+    const own = body[page], j = own.findIndex((r) => (r.t + r.b) / 2 < at);
+    if (j <= 0) return fail;
+    height = own[j].b - bottom + 1;
+  }
+  if (!(height > 0)) return fail;
   const moves = new Map(), newPages = [];
   const shiftRow = (r, pg, dy) => {
     r.t += dy; r.b += dy;
@@ -328,6 +373,7 @@ export function planInsert(pages, { page, at, height }) {
     // what no longer fits goes on to the next page (a heading goes with what follows it)
     let k = rows.findIndex((r) => r.b < bottom - 0.5);
     if (k === -1) { carry = []; break; }
+    while (k > 0 && bound(rows[k - 1], rows[k])) k--; // keep pairs together
     for (let guard = 0; guard < 4 && k > 0; guard++) {
       const h = [k - 1, k - 2].find((x) => x >= 0 && isHeading(rows[x]));
       if (h === undefined) break;
@@ -340,29 +386,4 @@ export function planInsert(pages, { page, at, height }) {
     if (newPages.length > 50) return fail;
   }
   return { ok: moves.size > 0, moves, newPages };
-}
-
-/**
- * Page break at height "at": the rows below it go to a new page right after this one. The new page is
- * a copy of this page (same size, header, footer, background) with only those rows, moved to the top.
- * Returns { ok, below: [ids] (leave this page), keep: Map(id → dy) (what stays on the copy), number: [ids] }.
- */
-export function planBreak(pages, { page, at }) {
-  const fail = { ok: false };
-  const { body, tops, rows, furniture } = analyze(pages);
-  const own = body[page] || [];
-  const j = own.findIndex((r) => (r.t + r.b) / 2 < at);
-  if (j <= 0) return fail; // nothing above (the page would be empty) or nothing below
-  const below = own.slice(j), dy = (tops[page] ?? below[0].t) - below[0].t;
-  const keep = new Map();
-  for (const r of below) for (const o of r.items) keep.set(o.id, dy);
-  // the copy keeps the header and footer, but not a page number (it would repeat this page's number)
-  for (const r of furniture[page]) {
-    if (/^[#\-–—.·|/()\[\]σελιδαpage]*$/.test(r.sig) && r.sig.includes("#")) continue;
-    for (const o of r.items) keep.set(o.id, 0);
-  }
-  // objects that belong to no row (backgrounds, frames) stay on both pages
-  const inRows = new Set(rows[page].flatMap((r) => r.items.map((o) => o.id)));
-  for (const o of pages[page].objs) if (!inRows.has(o.id)) keep.set(o.id, 0);
-  return { ok: true, below: below.flatMap((r) => r.items.map((o) => o.id)), keep };
 }
