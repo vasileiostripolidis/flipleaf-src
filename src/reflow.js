@@ -67,15 +67,13 @@ export function rowsOf(objs) {
   return rows;
 }
 
-export function planGap(pages, gap) {
+/** Rows, running headers/footers and the usual spacing of the document. */
+function analyze(pages, phantomPage = -1, phantomBoxes = []) {
   const n = pages.length;
-  const fail = { ok: false, moves: new Map(), drop: [], removePages: [] };
-  if (!gap?.boxes?.length || gap.page < 0 || gap.page >= n) return fail;
-
   // objects that cover most of the page (backgrounds, frames) never move
   const fixed = (p, o) => o.kind !== "text" && (o.r - o.l) * (o.t - o.b) > 0.5 * p.width * p.height;
-  const phantom = gap.boxes.map((b, j) => ({ id: "deleted:" + j, kind: "text", text: "x", blank: false, deleted: true, ...b }));
-  const rows = pages.map((p, i) => rowsOf([...p.objs.filter((o) => !fixed(p, o)), ...(i === gap.page ? phantom : [])]));
+  const phantom = phantomBoxes.map((b, j) => ({ id: "deleted:" + j, kind: "text", text: "x", blank: false, deleted: true, ...b }));
+  const rows = pages.map((p, i) => rowsOf([...p.objs.filter((o) => !fixed(p, o)), ...(i === phantomPage ? phantom : [])]));
 
   // usual spacing between rows, from all pages
   const gaps = [];
@@ -124,6 +122,68 @@ export function planGap(pages, gap) {
   // never down into a footer
   for (let i = 0; i < n; i++) for (const r of furniture[i]) if (r.t < pages[i].height / 2) bottom = Math.max(bottom, r.t + paraSp);
 
+  // headings: rows with text clearly bigger than the body text
+  const sizes = body.flat().flatMap((r) => r.items.filter((o) => o.kind === "text" && !o.blank && o.size > 0).map((o) => o.size));
+  const textSize = median(sizes, 0);
+  const isHeading = (r) => hasText(r) && (textSize ? Math.max(...r.items.map((o) => o.size || 0)) > textSize * 1.25 : r.t - r.b > rowH * 1.5);
+  /** Width of the first word of a row (to tell whether it would have fitted on the line before). */
+  const firstWord = (r) => {
+    const items = r.items.filter((o) => o.kind === "text" && !o.blank).sort((x, y) => x.l - y.l);
+    if (!items.length) return 0;
+    const f = items[0], txt = (f.text || "").replace(/^\s+/, ""), sp = txt.search(/\s/);
+    if (sp > 0) return ((f.r - f.l) * sp) / txt.length;
+    let end = f.r;
+    for (let j = 1; j < items.length; j++) {
+      const o = items[j];
+      if (o.l - end > Math.max(1, (r.t - r.b) * 0.22) || /^\s/.test(o.text || "")) break;
+      end = o.r;
+      const s2 = (o.text || "").search(/\s/);
+      if (s2 > 0) { end = o.l + ((o.r - o.l) * s2) / o.text.length; break; }
+    }
+    return end - f.l;
+  };
+  // a paragraph ended on row a if b starts indented, or if b's first word would have fitted on a
+  const newParagraph = (a, b) => b.l > leftEdge + 8 || a.r + firstWord(b) + 4 < rightEdge;
+  /** The spacing two rows should have when they follow each other. */
+  const spacing = (a, b) => (isHeading(a) || isHeading(b) || (hasText(a) && hasText(b) && newParagraph(a, b)) ? paraSp : lineSp);
+  return { n, body, tops, bottom, lineSp, paraSp, rowH, isHeading, spacing };
+}
+
+/**
+ * Empty space on page i worth closing: between two rows, or at the bottom of a page that the next
+ * page could fill. Returns [{ at, top, bottom }] (PDF points; "at" is a height inside the space).
+ */
+export function findGaps(pages, i) {
+  if (i < 0 || i >= pages.length) return [];
+  const { n, body, bottom, rowH, paraSp, spacing, isHeading } = analyze(pages);
+  const own = body[i], out = [];
+  const min = Math.max(2.2 * rowH, 26);
+  for (let j = 1; j < own.length; j++) {
+    const a = own[j - 1], b = own[j], extra = a.b - b.t - spacing(a, b);
+    if (extra > min) out.push({ at: (a.b + b.t) / 2, top: a.b, bottom: b.t });
+  }
+  const last = own[own.length - 1], next = body[i + 1]?.[0];
+  if (last && next && i + 1 < n) {
+    // a heading only moves together with what follows it
+    const src = body[i + 1];
+    let k = 0;
+    while (k < 3 && k + 1 < src.length && isHeading(src[k])) k++;
+    const free = last.b - bottom, need = next.t - src[k].b + paraSp;
+    if (free > Math.max(min, need + 2)) out.push({ at: (last.b + bottom) / 2, top: last.b, bottom });
+  }
+  return out;
+}
+
+/**
+ * gap: { page, boxes } — rows deleted just now (their boxes) close up; or
+ *      { page, at }    — the empty space around height "at" closes up.
+ */
+export function planGap(pages, gap) {
+  const n = pages.length;
+  const fail = { ok: false, moves: new Map(), drop: [], removePages: [] };
+  if (!gap || gap.page < 0 || gap.page >= n || (!gap.boxes?.length && typeof gap.at !== "number")) return fail;
+  const { body, tops, bottom, isHeading, spacing } = analyze(pages, gap.boxes ? gap.page : -1, gap.boxes || []);
+
   const moves = new Map(), drop = [];
   const shiftRow = (r, page, dy) => {
     r.t += dy; r.b += dy;
@@ -135,41 +195,49 @@ export function planGap(pages, gap) {
     }
   };
 
-  // 1. the page itself: runs of rows that were deleted completely close up
+  // 1. the page itself
   const own = body[gap.page];
-  const gone = (r) => r.items.every((o) => o.deleted || o.blank) && r.items.some((o) => o.deleted);
-  let closed = false;
-  for (let j = 0; j < own.length; j++) {
-    if (!gone(own[j])) continue;
-    let e = j;
-    while (e + 1 < own.length && gone(own[e + 1])) e++;
-    const first = own[j], last = own[e], prev = own[j - 1], next = own[e + 1];
-    for (let x = j; x <= e; x++) for (const o of own[x].items) if (o.blank && !o.deleted) drop.push(o.id);
-    closed = true;
-    if (next) {
-      const above = prev ? prev.b - first.t : null, below = last.b - next.t;
-      const target = prev ? prev.b - Math.max(above, below) : first.t;
-      const dy = target - next.t;
-      if (dy > 0.01) for (let x = e + 1; x < own.length; x++) shiftRow(own[x], gap.page, dy);
+  if (gap.boxes) {
+    // runs of rows that were deleted completely close up
+    const gone = (r) => r.items.every((o) => o.deleted || o.blank) && r.items.some((o) => o.deleted);
+    let closed = false;
+    for (let j = 0; j < own.length; j++) {
+      if (!gone(own[j])) continue;
+      let e = j;
+      while (e + 1 < own.length && gone(own[e + 1])) e++;
+      const first = own[j], last = own[e], prev = own[j - 1], next = own[e + 1];
+      for (let x = j; x <= e; x++) for (const o of own[x].items) if (o.blank && !o.deleted) drop.push(o.id);
+      closed = true;
+      if (next) {
+        const above = prev ? prev.b - first.t : null, below = last.b - next.t;
+        const target = prev ? prev.b - Math.max(above, below) : first.t;
+        const dy = target - next.t;
+        if (dy > 0.01) for (let x = e + 1; x < own.length; x++) shiftRow(own[x], gap.page, dy);
+      }
+      own.splice(j, e - j + 1);
+      j--;
     }
-    own.splice(j, e - j + 1);
-    j--;
+    if (!closed) return fail;
+  } else {
+    // empty space: the rows around it get their usual spacing
+    let j = own.findIndex((r) => r.t <= gap.at);
+    if (j === -1) j = own.length; // below the last row: only the next page can fill it
+    const prev = own[j - 1], next = own[j];
+    if (next) {
+      const target = prev ? prev.b - spacing(prev, next) : tops[gap.page] ?? next.t;
+      const dy = target - next.t;
+      if (dy > 0.5) for (let x = j; x < own.length; x++) shiftRow(own[x], gap.page, dy);
+    }
   }
-  if (!closed) return fail;
 
   // 2. whole rows from the next pages move up, page after page
-  // headings: rows with text clearly bigger than the body text
-  const sizes = body.flat().flatMap((r) => r.items.filter((o) => o.kind === "text" && !o.blank && o.size > 0).map((o) => o.size));
-  const textSize = median(sizes, 0);
-  const isHeading = (r) => hasText(r) && (textSize ? Math.max(...r.items.map((o) => o.size || 0)) > textSize * 1.25 : r.t - r.b > rowH * 1.5);
-  const endsParagraph = (r) => r.r < rightEdge - Math.max(24, (rightEdge - leftEdge) * 0.08);
   let cur = gap.page;
   for (let nxt = cur + 1; nxt < n; nxt++) {
     const src = body[nxt], dst = body[cur];
     if (!src.length) break;
     const last = dst[dst.length - 1];
     const first = src[0];
-    const space = !last ? 0 : endsParagraph(last) || isHeading(first) || isHeading(last) ? paraSp : lineSp;
+    const space = last ? spacing(last, first) : 0;
     const target = last ? last.b - space : tops[cur] ?? first.t;
     const dy = target - first.t;
     let take = 0;
@@ -197,5 +265,6 @@ export function planGap(pages, gap) {
   // pages at the end that are left with nothing but their header/footer
   const removePages = [];
   for (let i = n - 1; i > gap.page && !body[i].length; i--) removePages.push(i);
+  if (!moves.size && !drop.length && !gap.boxes) return fail;
   return { ok: true, moves, drop, removePages };
 }

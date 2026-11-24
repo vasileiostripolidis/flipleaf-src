@@ -15,7 +15,7 @@ const MAX_UNDO = 20;
 const BASE = new URL("./vendor/", import.meta.url).href;
 
 import { getPdfium, M, malloc, free, heap, putBytes, wstr as putString, floats, readFloats } from "./pdfium.js";
-import { planGap } from "./reflow.js";
+import { planGap, findGaps } from "./reflow.js";
 let P = null; // wrapped PDFium module
 
 const FONT_FILES = {
@@ -149,14 +149,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
 
   /* ---------------------------------------------------------- modifying */
   function snapshot() {
-    lastGap = null; // any other change ends the "close the gap" offer
+    lastGap = null; gapCache.clear(); // any other change ends the "close the gap" offer
     undo.push(save());
     if (undo.length > MAX_UNDO) undo.shift();
     ui.undo.disabled = false;
   }
   async function doUndo() {
     if (!undo.length) return;
-    lastGap = null;
+    lastGap = null; gapCache.clear();
     const bytes = undo.pop();
     const keep = new Set(modified);
     close();
@@ -170,11 +170,15 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
 
   /* ---------------------------------------------------------- closing the gap left by deleted content */
   // The layout work is in reflow.js; here the page objects are read and the plan is carried out.
-  let lastGap = null; // { page, boxes: [{ l, b, r, t }] } — what was just deleted (PDF points)
+  // lastGap: { page, boxes: [{ l, b, r, t }] } — what was just deleted (PDF points),
+  //       or { page, at, top, bottom } — empty space the user pointed at by dragging over it
+  let lastGap = null;
+  const gapCache = new Map(); // page → empty spaces found on it
+  const hidden = new Set();   // "page:height" of the ones the user closed the offer for
 
-  function layoutOf() {
-    const n = P.FPDF_GetPageCount(doc), pagesOut = [], handles = new Map();
-    for (let i = 0; i < n; i++) {
+  function layoutOf(from = 0, to = P.FPDF_GetPageCount(doc) - 1) {
+    const pagesOut = [], handles = new Map();
+    for (let i = from; i <= to; i++) {
       const { page, text } = getPage(i);
       const objs = [];
       for (let k = 0, c = P.FPDFPage_CountObjects(page); k < c; k++) {
@@ -189,7 +193,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
           const fs = readFloats(1, (p) => P.FPDFTextObj_GetFontSize(o, p))?.[0] || 0, m = readFloats(6, (p) => P.FPDFPageObj_GetMatrix(o, p));
           size = fs * (m ? Math.hypot(m[2], m[3]) || 1 : 1);
         }
-        const id = i + ":" + k;
+        const id = i + ":" + k; // ids carry the real page index; the plan works with indexes from "from"
         handles.set(id, { o, page: i });
         objs.push({ id, l: b[0], b: b[1], r: b[2], t: b[3], kind: type === FPDF_PAGEOBJ_TEXT ? "text" : type === 2 ? "path" : "image", text: str, blank, size });
       }
@@ -198,14 +202,26 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     return { pages: pagesOut, handles };
   }
 
-  async function closeGap() {
-    const g = lastGap;
+  /** Empty spaces on page i, judged against the pages around it. */
+  function gapsOf(i) {
+    if (gapCache.has(i)) return gapCache.get(i);
+    let list = [];
+    try {
+      const n = P.FPDF_GetPageCount(doc), lo = Math.max(0, i - 4), hi = Math.min(n - 1, i + 4);
+      list = findGaps(layoutOf(lo, hi).pages, i - lo);
+    } catch (e) { console.warn(e); }
+    gapCache.set(i, list);
+    return list;
+  }
+
+  async function closeGap(gap = lastGap) {
+    const g = gap;
     if (!g) return;
     lastGap = null;
     snapshot();
     const { pages: layout, handles } = layoutOf();
     const plan = planGap(layout, g);
-    if (!plan.ok) { undo.pop(); ui.undo.disabled = !undo.length; toast(t("editGapNone"), 4000); redrawAll(); return; }
+    if (!plan.ok) { undo.pop(); ui.undo.disabled = !undo.length; toast(t(g.boxes ? "editGapNone" : "editGapNothing"), 4000); redrawAll(); return; }
     const touched = new Set([g.page]);
     for (const id of plan.drop) {
       const h = handles.get(id);
@@ -226,6 +242,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       touched.add(h.page); touched.add(m.page);
     }
     for (const i of touched) P.FPDFPage_GenerateContent(getPage(i).page);
+    gapCache.clear();
     const removed = plan.removePages.length;
     if (removed || [...touched].some((i) => i !== g.page)) {
       // content moved between pages (or pages went): the viewer shows the edited document itself
@@ -434,6 +451,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
         const r = screenRect(pv, it.bounds);
         return r.left < a.left + a.width && r.left + r.width > a.left && r.top < a.top + a.height && r.top + r.height > a.top;
       }).map((it) => it.k);
+      if (!hit.length && !add) {
+        // dragged over empty space: offer to close it
+        const [, ya] = pv.viewport.convertToPdfPoint(0, a.top), [, yb] = pv.viewport.convertToPdfPoint(0, a.top + a.height);
+        selected = null;
+        lastGap = { page: i, at: (ya + yb) / 2, top: Math.max(ya, yb), bottom: Math.min(ya, yb) };
+        decorate(i); updateToolbar();
+        return;
+      }
       if (hit.length || !add) selectMany(i, hit, add);
     };
     layer.addEventListener("pointermove", move);
@@ -472,6 +497,42 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
   }
 
+  function gapOffer(pv, i, { gap, top, bottom, auto }) {
+    const W = pv.div.clientWidth;
+    const [, yTop] = pv.viewport.convertToViewportPoint(0, top), [, yBot] = pv.viewport.convertToViewportPoint(0, bottom);
+    const y0 = Math.min(yTop, yBot), y1 = Math.max(yTop, yBot);
+    // room to the right of the page, inside the viewer
+    const cont = (viewer.container || pv.div.parentElement).getBoundingClientRect(), pr = pv.div.getBoundingClientRect();
+    const room = cont.right - pr.right - 18;
+    const wrap = document.createElement("div");
+    wrap.className = "egap-wrap" + (room >= 190 ? "" : room >= 70 ? " compact" : " inside");
+    wrap.style.top = (y0 + y1) / 2 + "px";
+    if (room >= 70) wrap.style.left = W + 10 + "px"; else wrap.style.right = "6px";
+    const band = document.createElement("div");
+    band.className = "egap-band";
+    Object.assign(band.style, { top: y0 + "px", height: Math.max(2, y1 - y0) + "px" });
+    const go = document.createElement("button");
+    go.className = "egap";
+    go.innerHTML = `${icon("arrow-up", 15)}<span></span>`;
+    go.querySelector("span").textContent = t("editCloseGap");
+    go.title = t("editCloseGapHint");
+    go.onclick = (e) => { e.stopPropagation(); closeGap(gap); };
+    const x = document.createElement("button");
+    x.className = "egap-x";
+    x.innerHTML = icon("x", 13);
+    x.title = t("editGapHide");
+    x.onclick = (e) => {
+      e.stopPropagation();
+      if (auto) hidden.add(i + ":" + Math.round(gap.at)); else lastGap = null;
+      decorate(i);
+    };
+    wrap.append(go, x);
+    wrap.addEventListener("pointerdown", (e) => e.stopPropagation());
+    wrap.addEventListener("mouseenter", () => wrap.after(band));
+    wrap.addEventListener("mouseleave", () => band.remove());
+    return wrap;
+  }
+
   function decorate(i) {
     if (!active) return;
     const pv = pageView(i);
@@ -482,19 +543,20 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     layer.replaceChildren();
     layer.classList.toggle("adding", mode === "addText");
     if (modified.has(i)) renderPreview(i, pv, layer);
+    // "close the gap" offers, beside the page so they never cover the text
+    const offers = [];
     if (lastGap && lastGap.page === i) {
-      const bx = lastGap.boxes;
-      const r = screenRect(pv, [Math.min(...bx.map((q) => q.l)), Math.min(...bx.map((q) => q.b)), Math.max(...bx.map((q) => q.r)), Math.max(...bx.map((q) => q.t))]);
-      const gb = document.createElement("button");
-      gb.className = "egap";
-      gb.innerHTML = `${icon("arrow-up", 15)}<span></span>`;
-      gb.querySelector("span").textContent = t("editCloseGap");
-      gb.title = t("editCloseGapHint");
-      Object.assign(gb.style, { left: Math.max(8, r.left + r.width / 2) + "px", top: Math.max(8, r.top + r.height / 2) + "px" });
-      gb.addEventListener("pointerdown", (e) => e.stopPropagation());
-      gb.onclick = (e) => { e.stopPropagation(); closeGap(); };
-      layer.append(gb);
+      if (lastGap.boxes) {
+        const bx = lastGap.boxes;
+        offers.push({ gap: lastGap, top: Math.max(...bx.map((q) => q.t)), bottom: Math.min(...bx.map((q) => q.b)) });
+      } else offers.push({ gap: lastGap, top: lastGap.top, bottom: lastGap.bottom });
     }
+    for (const g of gapsOf(i)) {
+      if (hidden.has(i + ":" + Math.round(g.at))) continue;
+      if (offers.some((o) => g.at <= o.top + 2 && g.at >= o.bottom - 2)) continue;
+      offers.push({ gap: { page: i, at: g.at }, top: g.top, bottom: g.bottom, auto: true });
+    }
+    for (const o of offers) layer.append(gapOffer(pv, i, o));
     const del = document.createElement("button");
     del.className = "epage-del";
     del.innerHTML = `${icon("trash-2", 15)}<span></span>`;
@@ -772,7 +834,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     snapshot();
     // several deletions in a row on one page make one gap
     const boxes = items.map((it) => ({ l: it.bounds[0], b: it.bounds[1], r: it.bounds[2], t: it.bounds[3] }));
-    lastGap = { page: i, boxes: prevGap && prevGap.page === i ? [...prevGap.boxes, ...boxes] : boxes };
+    lastGap = { page: i, boxes: prevGap?.boxes && prevGap.page === i ? [...prevGap.boxes, ...boxes] : boxes };
     for (const it of items) removeObject(getPage(i).page, it.obj);
     selected = null;
     changed(i);
@@ -823,7 +885,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   /* ---------------------------------------------------------- session */
   async function enter(bytes, pw = "") {
     password = pw || "";
-    originalBytes = bytes.slice(); pagesChanged = false; lastGap = null;
+    originalBytes = bytes.slice(); pagesChanged = false; lastGap = null; gapCache.clear(); hidden.clear();
     await open(bytes);
     active = true; selected = null; mode = "select"; undo.length = 0; modified.clear();
     document.body.classList.add("editing");

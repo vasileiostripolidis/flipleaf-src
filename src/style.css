@@ -502,6 +502,15 @@ html[data-theme="dark"] .fl-hits { mix-blend-mode: normal; }
 .epage-del:hover { background: #fdecea; }
 html[data-theme="dark"] .epage-del { color: #ff8a80; }
 html[data-theme="dark"] .epage-del:hover { background: color-mix(in srgb, #d93025 20%, var(--surface)); }
-.egap { position: absolute; z-index: 4; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border: 0; border-radius: 999px; background: var(--brand); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .22); white-space: nowrap; animation: fl-appear .15s ease; }
-.egap:hover { filter: brightness(1.08); }
+.egap-wrap { position: absolute; z-index: 6; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: var(--brand); box-shadow: 0 4px 14px rgba(0, 0, 0, .22); animation: fl-appear .15s ease; white-space: nowrap; }
+.egap-wrap::before { content: ""; position: absolute; right: 100%; top: 50%; width: 10px; border-top: 1.5px dashed var(--brand); }
+.egap-wrap.inside::before { display: none; }
+.egap { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.egap-wrap.compact .egap span, .egap-wrap.inside .egap span { display: none; }
+.egap-wrap.compact .egap, .egap-wrap.inside .egap { padding: 0 6px; }
+.egap-wrap.inside { opacity: .55; }
+.egap-wrap.inside:hover { opacity: 1; }
+.egap-x { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .16); color: #fff; cursor: pointer; }
+.egap:hover, .egap-x:hover { background: rgba(255, 255, 255, .22); }
+.egap-band { position: absolute; left: 0; right: 0; z-index: 3; pointer-events: none; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--brand) 16%, transparent) 0 6px, transparent 6px 12px); outline: 1px dashed var(--brand); }
 .emarquee { position: absolute; z-index: 5; border: 1px solid var(--brand); background: color-mix(in srgb, var(--brand) 12%, transparent); border-radius: 2px; pointer-events: none; }
