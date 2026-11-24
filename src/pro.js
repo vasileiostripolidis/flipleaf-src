@@ -266,9 +266,11 @@ export function installPro(app) {
   })();
 
   /* ============================================================ EDIT & ORGANIZE */
+  let pageClip = null, orgSession = 0; // pages copied or cut in "Organize pages" (kept between documents)
 
   const organize = gate("organize", async () => {
-    const pdf = app.doc.pdf, files = new Map(); // key → { bytes, pdfjs }
+    const pdf = app.doc.pdf, files = new Map(); // key → { bytes, pdfjs, pw }
+    const session = ++orgSession;
     let entries = [...Array(pdf.numPages).keys()].map((i) => ({ src: 0, index: i, rot: 0 }));
     let selected = new Set(), lastClicked = null, nextKey = 1;
     const view = html(`<div class="organizer" role="dialog">
@@ -276,6 +278,9 @@ export function installPro(app) {
         <button class="btn sm secondary" data-a="rotL">${icon("rotate-ccw", 16)}<span>${t("orgRotL")}</span></button>
         <button class="btn sm secondary" data-a="rotR">${icon("rotate-cw", 16)}<span>${t("orgRotR")}</span></button>
         <button class="btn sm secondary" data-a="del">${icon("trash-2", 16)}<span>${t("orgDelete")}</span></button>
+        <button class="btn sm secondary" data-a="cut" title="${t("orgCut")} (Ctrl+X)">${icon("scissors", 16)}<span>${t("orgCut")}</span></button>
+        <button class="btn sm secondary" data-a="copy" title="${t("orgCopy")} (Ctrl+C)">${icon("copy", 16)}<span>${t("orgCopy")}</span></button>
+        <button class="btn sm secondary" data-a="paste" title="${t("orgPaste")} (Ctrl+V)">${icon("clipboard-paste", 16)}<span>${t("orgPaste")}</span></button>
         <button class="btn sm secondary" data-a="blank">${icon("file", 16)}<span>${t("orgBlank")}</span></button>
         <button class="btn sm secondary" data-a="insert">${icon("plus", 16)}<span>${t("orgInsert")}</span></button>
         <button class="btn sm secondary" data-a="extract">${icon("download", 16)}<span>${t("orgExtract")}</span></button>
@@ -355,6 +360,9 @@ export function installPro(app) {
       if (e.key === "Escape") { e.stopPropagation(); close(); }
       if ((e.key === "Delete" || e.key === "Backspace") && selected.size) { e.preventDefault(); e.stopPropagation(); act("del"); }
       if ((e.ctrlKey || e.metaKey) && (e.code === "KeyA" || e.key.toLowerCase() === "a")) { e.preventDefault(); e.stopPropagation(); selected = new Set(entries); render(); }
+      if (e.target.closest?.("input, textarea, select")) return;
+      const clip = { KeyC: "copy", KeyX: "cut", KeyV: "paste" }[e.code];
+      if ((e.ctrlKey || e.metaKey) && clip) { e.preventDefault(); e.stopPropagation(); act(clip); }
     };
     addEventListener("keydown", key, true);
     const sel = () => entries.filter((e) => selected.has(e));
@@ -365,6 +373,43 @@ export function installPro(app) {
       if (a === "del") {
         if (entries.length - selected.size < 1) return toast(t("orgEmpty"));
         entries = entries.filter((e) => !selected.has(e)); selected.clear(); return render();
+      }
+      if (a === "copy" || a === "cut") {
+        const items = sel();
+        if (!items.length) return toast(t("orgPickFirst"));
+        if (a === "cut" && entries.length - items.length < 1) return toast(t("orgEmpty"));
+        // the pages are remembered with the file they come from, so they can be pasted into other documents too
+        const sources = new Map();
+        for (const e of items) {
+          if (e.blank || sources.has(e.src)) continue;
+          sources.set(e.src, e.src === 0 ? { bytes: await bytesNow(), pw: pw() } : { bytes: files.get(e.src).bytes, pw: files.get(e.src).pw });
+        }
+        pageClip = { session, items: items.map((e) => ({ ...e, ref: e })), sources, cut: a === "cut" };
+        if (a === "cut") { entries = entries.filter((e) => !selected.has(e)); selected.clear(); render(); }
+        return toast(t(a === "cut" ? "orgCutDone" : "orgCopied", { n: items.length }));
+      }
+      if (a === "paste") {
+        if (!pageClip) return toast(t("orgClipEmpty"));
+        const at = selected.size ? Math.max(...sel().map((e) => entries.indexOf(e))) + 1 : entries.length;
+        const keys = new Map(), pasted = [];
+        for (const c of pageClip.items) {
+          if (c.blank) { pasted.push({ blank: true, src: -1, index: 0, rot: c.rot }); continue; }
+          // cut in this window and not pasted yet: the page itself moves (keeps its links and form fields)
+          if (pageClip.session === session && pageClip.cut && !entries.includes(c.ref) && !pasted.includes(c.ref)) { c.ref.rot = c.rot; pasted.push(c.ref); continue; }
+          if (pageClip.session === session && c.src !== 0) { pasted.push({ src: c.src, index: c.index, rot: c.rot }); continue; }
+          if (!keys.has(c.src)) {
+            const { bytes, pw: password } = pageClip.sources.get(c.src);
+            const pj = await pdfjsLib.getDocument({ data: bytes.slice(), password: password || undefined, isEvalSupported: false }).promise;
+            const k = nextKey++;
+            files.set(k, { bytes, pdfjs: pj, pw: password });
+            keys.set(c.src, k);
+          }
+          pasted.push({ src: keys.get(c.src), index: c.index, rot: c.rot });
+        }
+        entries.splice(at, 0, ...pasted);
+        selected = new Set(pasted); lastClicked = at;
+        render();
+        return toast(t("orgPasted", { n: pasted.length }));
       }
       if (a === "blank") {
         const at = Math.max(...sel().map((e) => entries.indexOf(e)), entries.length - 1) + 1;
@@ -405,7 +450,7 @@ export function installPro(app) {
       const srcs = new Map();
       try {
         srcs.set(0, await PdfDoc.open(await bytesNow(), pw()));
-        for (const [k, f] of files) srcs.set(k, await PdfDoc.open(f.bytes));
+        for (const [k, f] of files) srcs.set(k, await PdfDoc.open(f.bytes, f.pw || ""));
         list.forEach((e, at) => {
           if (e.blank) { const [w, h] = out.count ? out.size(0) : [595, 842]; out.releasePages(); P().FPDFPage_New(out.h, at, w, h); return; }
           importPages(out, srcs.get(e.src), [e.index], at);
@@ -427,7 +472,7 @@ export function installPro(app) {
         if (e.src === 0) continue;
         if (e.blank) { const [w, h] = doc.size(0); doc.releasePages(); P().FPDFPage_New(doc.h, count, w, h); }
         else {
-          const src = await PdfDoc.open(files.get(e.src).bytes);
+          const src = await PdfDoc.open(files.get(e.src).bytes, files.get(e.src).pw || "");
           importPages(doc, src, [e.index], count); src.close();
         }
         live.push(e); count++;

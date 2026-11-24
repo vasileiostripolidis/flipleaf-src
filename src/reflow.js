@@ -268,3 +268,73 @@ export function planGap(pages, gap) {
   if (!moves.size && !drop.length && !gap.boxes) return fail;
   return { ok: true, moves, drop, removePages };
 }
+
+/** Where new space can be opened on page i: the boundaries between rows (PDF heights), and one line's height. */
+export function insertPoints(pages, i) {
+  const { body, lineSp, rowH } = analyze(pages);
+  const own = body[i] || [], at = [];
+  if (own.length) {
+    at.push(own[0].t + Math.min(lineSp, 4));
+    for (let j = 1; j < own.length; j++) at.push((own[j - 1].b + own[j].t) / 2);
+  }
+  return { at, line: rowH + lineSp };
+}
+
+/**
+ * Opens up empty space: everything below height "at" on page "page" moves down by "height" points;
+ * whatever no longer fits moves on to the next pages (new pages are added at the end if needed).
+ * Returns { ok, moves, newPages: [{ width, height }] } — moves may point at the new pages (n, n+1…).
+ */
+export function planInsert(pages, { page, at, height }) {
+  const fail = { ok: false, moves: new Map(), newPages: [] };
+  if (!(height > 0) || page < 0 || page >= pages.length) return fail;
+  const { n, body, tops, bottom, isHeading, spacing } = analyze(pages);
+  const moves = new Map(), newPages = [];
+  const shiftRow = (r, pg, dy) => {
+    r.t += dy; r.b += dy;
+    for (const o of r.items) {
+      const m = moves.get(o.id) || { page: pg, dy: 0 };
+      m.page = pg; m.dy += dy;
+      moves.set(o.id, m);
+    }
+  };
+  const top0 = tops[page] ?? tops.find((v) => v !== null) ?? pages[page].height - 72;
+  let carry = [];
+  for (let p = page; ; p++) {
+    if (p >= n + newPages.length) {
+      if (!carry.length) break;
+      newPages.push({ width: pages[n - 1].width, height: pages[n - 1].height });
+      body[p] = [];
+    }
+    let rows = body[p];
+    if (p === page) {
+      const j = rows.findIndex((r) => (r.t + r.b) / 2 < at);
+      if (j === -1) return fail; // nothing below the point
+      for (const r of rows.slice(j)) shiftRow(r, p, -height);
+    } else if (carry.length) {
+      // the rows pushed off the page before go to the top of this one, the rest goes down after them
+      const start = tops[p] ?? top0, off = start - carry[0].t;
+      for (const r of carry) shiftRow(r, p, off);
+      if (rows.length) {
+        const target = carry[carry.length - 1].b - spacing(carry[carry.length - 1], rows[0]);
+        const dy = target - rows[0].t;
+        if (dy < 0) for (const r of rows) shiftRow(r, p, dy);
+      }
+      rows = body[p] = [...carry, ...rows];
+    } else break;
+    // what no longer fits goes on to the next page (a heading goes with what follows it)
+    let k = rows.findIndex((r) => r.b < bottom - 0.5);
+    if (k === -1) { carry = []; break; }
+    for (let guard = 0; guard < 4 && k > 0; guard++) {
+      const h = [k - 1, k - 2].find((x) => x >= 0 && isHeading(rows[x]));
+      if (h === undefined) break;
+      k = h;
+    }
+    if (k === 0 && p !== page) k = 1; // a block taller than a page: keep at least one row, or this never ends
+    carry = rows.slice(k);
+    body[p] = rows.slice(0, k);
+    if (!carry.length) break;
+    if (newPages.length > 50) return fail;
+  }
+  return { ok: moves.size > 0, moves, newPages };
+}

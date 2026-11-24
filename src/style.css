@@ -514,3 +514,15 @@ html[data-theme="dark"] .epage-del:hover { background: color-mix(in srgb, #d9302
 .egap:hover, .egap-x:hover { background: rgba(255, 255, 255, .22); }
 .egap-band { position: absolute; left: 0; right: 0; z-index: 3; pointer-events: none; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--brand) 16%, transparent) 0 6px, transparent 6px 12px); outline: 1px dashed var(--brand); }
 .emarquee { position: absolute; z-index: 5; border: 1px solid var(--brand); background: color-mix(in srgb, var(--brand) 12%, transparent); border-radius: 2px; pointer-events: none; }
+.edit-layer.drawing { cursor: crosshair; }
+.eshape-preview { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; overflow: visible; }
+.shape-pick { position: relative; display: inline-flex; }
+.shape-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 60; min-width: 190px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); display: grid; gap: 1px; }
+.shape-menu[hidden] { display: none; }
+.shape-menu button { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.shape-menu button:hover { background: var(--hover); }
+.edit-layer.spacing { cursor: row-resize; }
+.edit-layer.spacing .eobj { pointer-events: none; }
+.einsert { position: absolute; left: 0; right: 0; z-index: 5; pointer-events: none; border-top: 2px solid var(--brand); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--brand) 14%, transparent) 0 6px, transparent 6px 12px); }
+.einsert i { position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand); }
+.einsert span { position: absolute; right: 8px; top: -26px; padding: 2px 9px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }

@@ -8,14 +8,16 @@
 //  • changed pages are re-rendered by PDFium on top of the normal view, so edits are live;
 //  • "Done" saves the document from PDFium and hands the new bytes back to the viewer.
 
-const FPDF_PAGEOBJ_TEXT = 1, FPDF_PAGEOBJ_IMAGE = 3;
+const FPDF_PAGEOBJ_TEXT = 1, FPDF_PAGEOBJ_PATH = 2, FPDF_PAGEOBJ_IMAGE = 3;
+const SHAPES = ["line", "arrow", "rect", "fill", "ellipse"];
+const MAX_PATHS = 1500; // pages with more vector pieces than this (charts, maps) only offer their text and images
 const FPDF_FONT_TRUETYPE = 2;
 const RENDER_FLAGS = 0x01 /* annotations */ | 0x10 /* RGBA byte order */;
 const MAX_UNDO = 20;
 const BASE = new URL("./vendor/", import.meta.url).href;
 
 import { getPdfium, M, malloc, free, heap, putBytes, wstr as putString, floats, readFloats } from "./pdfium.js";
-import { planGap, findGaps } from "./reflow.js";
+import { planGap, findGaps, planInsert, insertPoints } from "./reflow.js";
 let P = null; // wrapped PDFium module
 
 const FONT_FILES = {
@@ -38,6 +40,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   const clearSelection = () => { selected = null; };
   let originalBytes = null, pagesChanged = false; // pages deleted: the viewer shows the edited document itself
   let pending = null; // { file, widthPt } waiting for a click
+  let shapeKind = "line"; // the shape drawn in "drawShape" mode
   const ui = buildToolbar();
 
   /* ---------------------------------------------------------- document */
@@ -114,12 +117,29 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   function objects(i) {
     const { page, text } = getPage(i);
     const n = P.FPDFPage_CountObjects(page), list = [];
+    const W = P.FPDF_GetPageWidthF(page), H = P.FPDF_GetPageHeightF(page);
+    let paths = 0;
+    for (let k = 0; k < n; k++) if (P.FPDFPageObj_GetType(P.FPDFPage_GetObject(page, k)) === FPDF_PAGEOBJ_PATH) paths++;
     for (let k = 0; k < n; k++) {
       const obj = P.FPDFPage_GetObject(page, k), type = P.FPDFPageObj_GetType(obj);
-      if (type !== FPDF_PAGEOBJ_TEXT && type !== FPDF_PAGEOBJ_IMAGE) continue;
+      if (type !== FPDF_PAGEOBJ_TEXT && type !== FPDF_PAGEOBJ_IMAGE && !(type === FPDF_PAGEOBJ_PATH && paths <= MAX_PATHS)) continue;
       const b = readFloats(4, (p) => P.FPDFPageObj_GetBounds(obj, p, p + 4, p + 8, p + 12));
       if (!b || b[2] - b[0] < 0.5 && b[3] - b[1] < 0.5) continue;
       const item = { k, obj, type, bounds: b };
+      if (type === FPDF_PAGEOBJ_PATH) {
+        // lines, frames and shapes; not page backgrounds, and not invisible helper paths
+        if ((b[2] - b[0]) * (b[3] - b[1]) > 0.6 * W * H) continue;
+        const mp = malloc(8);
+        const okMode = P.FPDFPath_GetDrawMode(obj, mp, mp + 4);
+        const fill = M().getValue(mp, "i32"), stroke = M().getValue(mp + 4, "i32");
+        free(mp);
+        if (!okMode || (!fill && !stroke)) continue;
+        item.filled = !!fill; item.stroked = !!stroke;
+        item.color = colorOf(obj, stroke ? "Stroke" : "Fill");
+        item.width = stroke ? readFloats(1, (p) => P.FPDFPageObj_GetStrokeWidth(obj, p))?.[0] || 1 : 0;
+        list.push(item);
+        continue;
+      }
       if (type === FPDF_PAGEOBJ_TEXT) {
         if (P.FPDFTextObj_GetTextRenderMode(obj) === 3) continue; // invisible (OCR layer)
         const len = P.FPDFTextObj_GetText(obj, text, 0, 0);
@@ -138,6 +158,13 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       list.push(item);
     }
     return list;
+  }
+
+  function colorOf(obj, which) {
+    const c = [0, 0, 0], cp = malloc(16);
+    if (P["FPDFPageObj_Get" + which + "Color"](obj, cp, cp + 4, cp + 8, cp + 12)) for (let j = 0; j < 3; j++) c[j] = M().getValue(cp + 4 * j, "i32");
+    free(cp);
+    return `#${c.map((v) => (v & 255).toString(16).padStart(2, "0")).join("")}`;
   }
 
   /** Characters a font is known to contain (it rendered them somewhere on this page). */
@@ -422,6 +449,189 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     decorate(i);
   }
 
+  /* ---------------------------------------------------------- opening up space */
+  const spotCache = new Map(); // page → { at: [PDF heights between rows], line }
+  let spaceDragging = false;
+  function spotsOf(i) {
+    if (!spotCache.has(i)) {
+      let v = { at: [], line: 14 };
+      try { const n = P.FPDF_GetPageCount(doc), lo = Math.max(0, i - 4), hi = Math.min(n - 1, i + 4); v = insertPoints(layoutOf(lo, hi).pages, i - lo); } catch (e) { console.warn(e); }
+      spotCache.set(i, v);
+    }
+    return spotCache.get(i);
+  }
+  /** The row boundary nearest to the pointer, in layer pixels and PDF points. */
+  function nearestSpot(layer, i, e) {
+    const pv = pageView(i), rect = layer.getBoundingClientRect(), y = e.clientY - rect.top;
+    const { at, line } = spotsOf(i);
+    let best = null;
+    for (const a of at) {
+      const [, py] = pv.viewport.convertToViewportPoint(0, a);
+      if (!best || Math.abs(py - y) < Math.abs(best.py - y)) best = { py, at: a };
+    }
+    return best && Math.abs(best.py - y) < 60 ? { ...best, line } : null;
+  }
+  function guide(layer) {
+    let g = layer.querySelector(".einsert");
+    if (!g) { g = document.createElement("div"); g.className = "einsert"; g.innerHTML = `<i></i><span></span>`; layer.append(g); }
+    return g;
+  }
+  function showSpot(layer, i, e) {
+    const s = nearestSpot(layer, i, e);
+    if (!s) { layer.querySelector(".einsert")?.remove(); return; }
+    const g = guide(layer);
+    g.style.top = s.py + "px"; g.style.height = "0px";
+    g.querySelector("span").textContent = t("editSpaceHere");
+  }
+  function dragSpace(layer, i, e) {
+    const s = nearestSpot(layer, i, e);
+    if (!s) { toast(t("editSpaceNoSpot")); return; }
+    const pv = pageView(i), scale = pv.viewport.scale, y0 = e.clientY;
+    const g = guide(layer);
+    spaceDragging = true;
+    layer.setPointerCapture(e.pointerId);
+    const amount = (ev) => Math.max(0, (ev.clientY - y0) / scale);
+    const move = (ev) => {
+      const h = amount(ev);
+      g.style.top = s.py + "px"; g.style.height = h * scale + "px";
+      g.querySelector("span").textContent = h * scale < 4 ? t("editSpaceHere") : t("editSpaceAmount", { n: Math.round(h) });
+    };
+    const up = async (ev) => {
+      layer.removeEventListener("pointermove", move);
+      layer.removeEventListener("pointerup", up);
+      layer.removeEventListener("pointercancel", up);
+      spaceDragging = false;
+      g.remove();
+      if (ev.type === "pointercancel") return;
+      let h = amount(ev);
+      if (h * scale < 4) h = s.line; // a click opens one empty line
+      setMode("select");
+      await insertSpace(i, s.at, h);
+    };
+    layer.addEventListener("pointermove", move);
+    layer.addEventListener("pointerup", up);
+    layer.addEventListener("pointercancel", up);
+  }
+  async function insertSpace(i, at, height) {
+    snapshot();
+    const { pages: layout, handles } = layoutOf();
+    const plan = planInsert(layout, { page: i, at, height });
+    if (!plan.ok) { undo.pop(); ui.undo.disabled = !undo.length; toast(t("editSpaceNoSpot")); return; }
+    const n = P.FPDF_GetPageCount(doc);
+    for (const [k, np] of plan.newPages.entries()) { const pg = P.FPDFPage_New(doc, n + k, np.width, np.height); if (pg) P.FPDF_ClosePage(pg); }
+    const touched = new Set([i]);
+    for (const [id, m] of plan.moves) {
+      const h = handles.get(id);
+      if (!h) continue;
+      if (m.page !== h.page) {
+        if (!P.FPDFPage_RemoveObject(getPage(h.page).page, h.o)) continue;
+        P.FPDFPage_InsertObject(getPage(m.page).page, h.o);
+      }
+      if (Math.abs(m.dy) > 0.001) { P.FPDFPageObj_Transform(h.o, 1, 0, 0, 1, 0, m.dy); P.FPDFPageObj_TransformClipPath(h.o, 1, 0, 0, 1, 0, m.dy); }
+      touched.add(h.page); touched.add(m.page);
+    }
+    for (const p of touched) P.FPDFPage_GenerateContent(getPage(p).page);
+    gapCache.clear();
+    if (plan.newPages.length || [...touched].some((p) => p !== i)) {
+      const out = save();
+      close();
+      await open(out);
+      modified.clear(); clearSelection(); pagesChanged = true;
+      await reload(out);
+    } else changed(i);
+    onChange?.();
+    toast(plan.newPages.length ? t("editSpaceAddedPages", { n: plan.newPages.length }) : t("editSpaceAdded"), 4000);
+    redrawAll();
+  }
+
+  /** Draws the chosen shape by dragging; Shift keeps lines straight (every 45°) and makes squares/circles. */
+  function drawShape(layer, i, e) {
+    const pv = pageView(i), rect = layer.getBoundingClientRect();
+    const x0 = e.clientX - rect.left, y0 = e.clientY - rect.top;
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "eshape-preview");
+    const color = ui.color.value, w = Math.max(1, (+ui.stroke.value || 1) * pv.viewport.scale);
+    layer.append(svg);
+    layer.setPointerCapture(e.pointerId);
+    const end = (ev) => {
+      let x1 = ev.clientX - rect.left, y1 = ev.clientY - rect.top;
+      if (ev.shiftKey) {
+        const dx = x1 - x0, dy = y1 - y0;
+        if (shapeKind === "line" || shapeKind === "arrow") {
+          const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), len = Math.hypot(dx, dy);
+          x1 = x0 + Math.cos(a) * len; y1 = y0 + Math.sin(a) * len;
+        } else { const d = Math.max(Math.abs(dx), Math.abs(dy)); x1 = x0 + Math.sign(dx || 1) * d; y1 = y0 + Math.sign(dy || 1) * d; }
+      }
+      return [x1, y1];
+    };
+    const draw = ([x1, y1]) => {
+      const l = Math.min(x0, x1), tp = Math.min(y0, y1), wd = Math.abs(x1 - x0), ht = Math.abs(y1 - y0);
+      const st = `stroke="${color}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"`;
+      let inner = "";
+      if (shapeKind === "line") inner = `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" ${st}/>`;
+      else if (shapeKind === "arrow") { const [p, q] = arrowWings(x0, y0, x1, y1, w); inner = `<path d="M${x0} ${y0}L${x1} ${y1}M${p[0]} ${p[1]}L${x1} ${y1}L${q[0]} ${q[1]}" fill="none" ${st}/>`; }
+      else if (shapeKind === "rect") inner = `<rect x="${l}" y="${tp}" width="${wd}" height="${ht}" fill="none" ${st}/>`;
+      else if (shapeKind === "fill") inner = `<rect x="${l}" y="${tp}" width="${wd}" height="${ht}" fill="${color}"/>`;
+      else inner = `<ellipse cx="${l + wd / 2}" cy="${tp + ht / 2}" rx="${wd / 2}" ry="${ht / 2}" fill="none" ${st}/>`;
+      svg.innerHTML = inner;
+    };
+    const move = (ev) => draw(end(ev));
+    const up = (ev) => {
+      layer.removeEventListener("pointermove", move);
+      layer.removeEventListener("pointerup", up);
+      layer.removeEventListener("pointercancel", up);
+      svg.remove();
+      const [x1, y1] = end(ev);
+      setMode("select");
+      if (Math.hypot(x1 - x0, y1 - y0) < 4) return;
+      const a = pv.viewport.convertToPdfPoint(x0, y0), b = pv.viewport.convertToPdfPoint(x1, y1);
+      addShape(i, shapeKind, a, b);
+    };
+    layer.addEventListener("pointermove", move);
+    layer.addEventListener("pointerup", up);
+    layer.addEventListener("pointercancel", up);
+  }
+  /** The two ends of an arrow head at (x1, y1), coming from (x0, y0). */
+  function arrowWings(x0, y0, x1, y1, w) {
+    const a = Math.atan2(y1 - y0, x1 - x0), len = Math.min(Math.hypot(x1 - x0, y1 - y0) * 0.4, 6 + w * 3);
+    return [[x1 - len * Math.cos(a - 0.45), y1 - len * Math.sin(a - 0.45)], [x1 - len * Math.cos(a + 0.45), y1 - len * Math.sin(a + 0.45)]];
+  }
+  function addShape(i, kind, [ax, ay], [bx, by]) {
+    const { page } = getPage(i);
+    const [r, g, b] = hexToRgb(ui.color.value), w = +ui.stroke.value || 1;
+    snapshot();
+    let obj;
+    const l = Math.min(ax, bx), bt = Math.min(ay, by), wd = Math.abs(bx - ax), ht = Math.abs(by - ay);
+    if (kind === "rect" || kind === "fill") obj = P.FPDFPageObj_CreateNewRect(l, bt, wd, ht);
+    else if (kind === "ellipse") {
+      const cx = l + wd / 2, cy = bt + ht / 2, rx = wd / 2, ry = ht / 2, k = 0.5523;
+      obj = P.FPDFPageObj_CreateNewPath(cx + rx, cy);
+      P.FPDFPath_BezierTo(obj, cx + rx, cy + ry * k, cx + rx * k, cy + ry, cx, cy + ry);
+      P.FPDFPath_BezierTo(obj, cx - rx * k, cy + ry, cx - rx, cy + ry * k, cx - rx, cy);
+      P.FPDFPath_BezierTo(obj, cx - rx, cy - ry * k, cx - rx * k, cy - ry, cx, cy - ry);
+      P.FPDFPath_BezierTo(obj, cx + rx * k, cy - ry, cx + rx, cy - ry * k, cx + rx, cy);
+      P.FPDFPath_Close(obj);
+    } else {
+      obj = P.FPDFPageObj_CreateNewPath(ax, ay);
+      P.FPDFPath_LineTo(obj, bx, by);
+      if (kind === "arrow") {
+        const [p, q] = arrowWings(ax, ay, bx, by, w);
+        P.FPDFPath_MoveTo(obj, p[0], p[1]); P.FPDFPath_LineTo(obj, bx, by); P.FPDFPath_LineTo(obj, q[0], q[1]);
+      }
+    }
+    if (kind === "fill") { P.FPDFPageObj_SetFillColor(obj, r, g, b, 255); P.FPDFPath_SetDrawMode(obj, 1, 0); }
+    else {
+      P.FPDFPageObj_SetStrokeColor(obj, r, g, b, 255);
+      P.FPDFPageObj_SetStrokeWidth(obj, w);
+      P.FPDFPageObj_SetLineCap(obj, 1); P.FPDFPageObj_SetLineJoin(obj, 1);
+      P.FPDFPath_SetDrawMode(obj, 0, 1);
+    }
+    P.FPDFPage_InsertObject(page, obj);
+    changed(i);
+    selectNewest(i, FPDF_PAGEOBJ_PATH);
+  }
+
   /** Dragging on an empty spot draws a rectangle; everything it touches is selected. */
   function marquee(layer, i, e, add) {
     const rect = layer.getBoundingClientRect();
@@ -541,7 +751,9 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     if (!layer) { layer = document.createElement("div"); layer.className = "edit-layer"; pv.div.append(layer); bindLayer(layer); }
     layer.dataset.page = i;
     layer.replaceChildren();
-    layer.classList.toggle("adding", mode === "addText");
+    layer.classList.toggle("adding", mode === "addText" || mode === "placeImage" || mode === "drawShape");
+    layer.classList.toggle("drawing", mode === "drawShape");
+    layer.classList.toggle("spacing", mode === "insertSpace");
     if (modified.has(i)) renderPreview(i, pv, layer);
     // "close the gap" offers, beside the page so they never cover the text
     const offers = [];
@@ -565,17 +777,21 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     del.addEventListener("pointerdown", (e) => e.stopPropagation());
     del.onclick = (e) => { e.stopPropagation(); deletePage(i); };
     layer.append(del);
-    for (const item of objects(i)) {
+    // shapes first, so text and pictures on top of them stay easy to click
+    const items = objects(i).sort((a, b) => (a.type === FPDF_PAGEOBJ_PATH ? 0 : 1) - (b.type === FPDF_PAGEOBJ_PATH ? 0 : 1));
+    for (const item of items) {
       const r = screenRect(pv, item.bounds);
       const box = document.createElement("div");
-      box.className = "eobj " + (item.type === FPDF_PAGEOBJ_TEXT ? "etext" : "eimage");
-      Object.assign(box.style, { left: r.left - 2 + "px", top: r.top - 2 + "px", width: r.width + 4 + "px", height: r.height + 4 + "px" });
+      box.className = "eobj " + (item.type === FPDF_PAGEOBJ_TEXT ? "etext" : item.type === FPDF_PAGEOBJ_PATH ? "eshape" : "eimage");
+      // thin lines get a box big enough to click
+      const padX = Math.max(2, (8 - r.width) / 2), padY = Math.max(2, (8 - r.height) / 2);
+      Object.assign(box.style, { left: r.left - padX + "px", top: r.top - padY + "px", width: r.width + 2 * padX + "px", height: r.height + 2 * padY + "px" });
       box.dataset.k = item.k;
       if (selected && selected.page === i && selected.ks.has(item.k)) {
         box.classList.add("sel");
-        if (item.type === FPDF_PAGEOBJ_IMAGE && selected.ks.size === 1) { const h = document.createElement("span"); h.className = "handle"; box.append(h); }
+        if (item.type !== FPDF_PAGEOBJ_TEXT && selected.ks.size === 1) { const h = document.createElement("span"); h.className = "handle"; box.append(h); }
       }
-      box.title = item.type === FPDF_PAGEOBJ_TEXT ? t("editHintText") : t("editHintImage");
+      box.title = item.type === FPDF_PAGEOBJ_TEXT ? t("editHintText") : item.type === FPDF_PAGEOBJ_PATH ? t("editHintShape") : t("editHintImage");
       layer.append(box);
     }
   }
@@ -636,6 +852,8 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
         addImage(i, file, [x, y], widthPt).catch(() => toast(t("editImageFailed")));
         return;
       }
+      if (mode === "drawShape") { e.preventDefault(); drawShape(layer, i, e); return; }
+      if (mode === "insertSpace") { e.preventDefault(); dragSpace(layer, i, e); return; }
       if (mode === "addText") {
         e.preventDefault();
         const [x, y] = pv.viewport.convertToPdfPoint(px, py);
@@ -689,6 +907,8 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       layer.addEventListener("pointerup", up);
       layer.addEventListener("pointercancel", up);
     });
+    layer.addEventListener("pointermove", (e) => { if (mode === "insertSpace" && !spaceDragging) showSpot(layer, +layer.dataset.page, e); });
+    layer.addEventListener("pointerleave", () => { if (!spaceDragging) layer.querySelector(".einsert")?.remove(); });
     layer.addEventListener("dblclick", (e) => {
       // the box may have been re-created by the first click, so fall back to the selected one
       const box = e.target.closest(".etext") || layer.querySelector(".eobj.sel.etext");
@@ -751,12 +971,20 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <button class="btn sm secondary" data-e="addText">${icon("type", 16)}<span>${t("editAddText")}</span></button>
       <button class="btn sm secondary" data-e="addImage">${icon("image-plus", 16)}<span>${t("editAddImage")}</span></button>
       <button class="btn sm secondary" data-e="addSig">${icon("signature", 16)}<span>${t("sigInsert")}</span></button>
+      <span class="shape-pick">
+        <button class="btn sm secondary" data-e="shape" aria-haspopup="menu" aria-expanded="false">${icon("shapes", 16)}<span>${t("editShape")}</span>${icon("chevron-down", 14)}</button>
+        <div class="shape-menu" role="menu" data-e="shapeMenu" hidden>
+          ${SHAPES.map((k) => `<button role="menuitem" data-shape="${k}">${icon("shape-" + k, 18)}<span>${t("editShape_" + k)}</span></button>`).join("")}
+        </div>
+      </span>
+      <button class="btn sm secondary" data-e="space" title="${t("editSpaceHint")}">${icon("unfold-vertical", 16)}<span>${t("editSpace")}</span></button>
       <div class="sep"></div>
       <select class="field sm" data-e="family"><option value="sans">Sans</option><option value="serif">Serif</option></select>
       <input class="field num sm" data-e="size" type="number" min="4" max="200" step="1" value="12" title="${t("fontSize")}">
       <button class="btn icon sm" data-e="bold" aria-pressed="false" title="Bold"><b>B</b></button>
       <button class="btn icon sm" data-e="italic" aria-pressed="false" title="Italic"><i style="font-family:serif">I</i></button>
       <input type="color" class="colorpick" data-e="color" value="#000000" title="${t("color")}">
+      <select class="field sm" data-e="stroke" title="${t("editStroke")}">${[0.5, 1, 1.5, 2, 3, 5, 8].map((w) => `<option value="${w}"${w === 2 ? " selected" : ""}>${String(w).replace(".", ",")} pt</option>`).join("")}</select>
       <div class="sep"></div>
       <button class="btn sm secondary" data-e="replace">${icon("image-plus", 16)}<span>${t("editReplace")}</span></button>
       <button class="btn icon sm" data-e="delete" title="${t("editDelete")}">${icon("trash-2", 16)}</button>
@@ -768,7 +996,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <button class="btn primary sm" data-e="done">${t("done")}</button>
       <input type="file" accept="image/*" hidden data-e="file">`;
     const q = (n) => bar.querySelector(`[data-e="${n}"]`);
-    const els = Object.fromEntries(["addText", "addImage", "addSig", "family", "size", "bold", "italic", "color", "replace", "delete", "delPage", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
+    const els = Object.fromEntries(["addText", "addImage", "addSig", "shape", "shapeMenu", "space", "stroke", "family", "size", "bold", "italic", "color", "replace", "delete", "delPage", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
     let fileTarget = "add";
     els.addText.onclick = () => setMode(mode === "addText" ? "select" : "addText");
     els.addImage.onclick = () => { fileTarget = "add"; els.file.click(); };
@@ -794,7 +1022,18 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const toggle = (b) => { b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") !== "true"); restyleSelected(); };
     els.bold.onclick = () => toggle(els.bold);
     els.italic.onclick = () => toggle(els.italic);
-    els.family.onchange = els.size.onchange = els.color.onchange = () => restyleSelected();
+    els.family.onchange = els.size.onchange = els.color.onchange = els.stroke.onchange = () => restyleSelected();
+    els.space.onclick = () => setMode(mode === "insertSpace" ? "select" : "insertSpace");
+    const menu = (open) => { els.shapeMenu.hidden = !open; els.shape.setAttribute("aria-expanded", open); };
+    els.shape.onclick = (e) => { e.stopPropagation(); menu(els.shapeMenu.hidden); };
+    els.shapeMenu.onclick = (e) => {
+      const b = e.target.closest("[data-shape]");
+      if (!b) return;
+      menu(false);
+      shapeKind = b.dataset.shape;
+      setMode("drawShape");
+    };
+    addEventListener("pointerdown", (e) => { if (!e.target.closest?.(".shape-pick")) menu(false); }, true);
     return els;
   }
 
@@ -805,8 +1044,13 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     ui.delete.disabled = !selected;
     ui.undo.disabled = !undo.length;
     ui.addText.classList.toggle("on", mode === "addText");
-    ui.hint.textContent = mode === "placeImage" ? t("editHintPlace") : mode === "addText" ? t("editHintAdd") : many ? t("editHintMany", { n: selected.ks.size }) : isText ? t("editHintText") : isImg ? t("editHintImage") : t("editHint");
+    const isShape = it?.type === FPDF_PAGEOBJ_PATH;
+    ui.hint.textContent = mode === "insertSpace" ? t("editHintSpace") : mode === "drawShape" ? t("editHintDraw") : mode === "placeImage" ? t("editHintPlace") : mode === "addText" ? t("editHintAdd") : many ? t("editHintMany", { n: selected.ks.size }) : isText ? t("editHintText") : isImg ? t("editHintImage") : isShape ? t("editHintShape") : t("editHint");
     ui.hint.title = ui.hint.textContent;
+    if (isShape) {
+      ui.color.value = it.color;
+      if (it.stroked) ui.stroke.value = [...ui.stroke.options].reduce((a, o) => (Math.abs(+o.value - it.width) < Math.abs(+a - it.width) ? o.value : a), "2");
+    }
     if (isText) {
       ui.family.value = it.serif ? "serif" : "sans";
       ui.size.value = Math.round(it.size * it.scale * 10) / 10;
@@ -817,6 +1061,18 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   }
 
   async function restyleSelected() {
+    const shapes = selectedItems().filter((o) => o.type === FPDF_PAGEOBJ_PATH);
+    if (shapes.length && shapes.length === selected.ks.size) {
+      const [r, g, b] = hexToRgb(ui.color.value), w = +ui.stroke.value || 1, keep = selected;
+      snapshot();
+      for (const o of shapes) {
+        if (o.stroked) { P.FPDFPageObj_SetStrokeColor(o.obj, r, g, b, 255); P.FPDFPageObj_SetStrokeWidth(o.obj, w); }
+        if (o.filled) P.FPDFPageObj_SetFillColor(o.obj, r, g, b, 255);
+      }
+      changed(keep.page);
+      selected = keep; decorate(keep.page); updateToolbar();
+      return;
+    }
     const it = selectedItem();
     if (it?.type !== FPDF_PAGEOBJ_TEXT) return;
     const style = defaultStyle();
@@ -833,8 +1089,10 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const prevGap = lastGap;
     snapshot();
     // several deletions in a row on one page make one gap
-    const boxes = items.map((it) => ({ l: it.bounds[0], b: it.bounds[1], r: it.bounds[2], t: it.bounds[3] }));
-    lastGap = { page: i, boxes: prevGap?.boxes && prevGap.page === i ? [...prevGap.boxes, ...boxes] : boxes };
+    const boxes = items.filter((it) => it.type !== FPDF_PAGEOBJ_PATH).map((it) => ({ l: it.bounds[0], b: it.bounds[1], r: it.bounds[2], t: it.bounds[3] }));
+    // (deleting just a line or a shape leaves no gap worth closing)
+    const merged = prevGap?.boxes && prevGap.page === i ? [...prevGap.boxes, ...boxes] : boxes;
+    lastGap = merged.length ? { page: i, boxes: merged } : null;
     for (const it of items) removeObject(getPage(i).page, it.obj);
     selected = null;
     changed(i);
@@ -843,9 +1101,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
 
   function setMode(m) {
     mode = m;
-    if (m === "addText") select(null, null);
+    if (m === "addText" || m === "drawShape" || m === "insertSpace") select(null, null);
     if (m !== "placeImage") pending = null;
-    for (const l of document.querySelectorAll(".edit-layer")) l.classList.toggle("adding", m === "addText" || m === "placeImage");
+    for (const l of document.querySelectorAll(".edit-layer")) l.classList.toggle("adding", m === "addText" || m === "placeImage" || m === "drawShape");
+    ui.shape.classList.toggle("on", m === "drawShape");
+    ui.space.classList.toggle("on", m === "insertSpace");
+    spotCache.clear();
+    for (const l of document.querySelectorAll(".edit-layer")) { l.classList.toggle("spacing", m === "insertSpace"); l.querySelector(".einsert")?.remove(); }
+    for (const l of document.querySelectorAll(".edit-layer")) l.classList.toggle("drawing", m === "drawShape");
     updateToolbar();
   }
 
