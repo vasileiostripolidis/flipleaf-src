@@ -526,3 +526,6 @@ html[data-theme="dark"] .epage-del:hover { background: color-mix(in srgb, #d9302
 .einsert { position: absolute; left: 0; right: 0; z-index: 5; pointer-events: none; border-top: 2px solid var(--brand); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--brand) 14%, transparent) 0 6px, transparent 6px 12px); }
 .einsert i { position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand); }
 .einsert span { position: absolute; right: 8px; top: -26px; padding: 2px 9px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.einsert.shrink { border-top: 0; border-block: 2px solid #c0392b; background: repeating-linear-gradient(135deg, rgb(192 57 43 / .18) 0 6px, transparent 6px 12px); }
+.einsert.shrink span { background: #c0392b; }
+.einsert.break { border-top: 2px dashed var(--brand); background: none; }

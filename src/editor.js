@@ -16,8 +16,8 @@ const RENDER_FLAGS = 0x01 /* annotations */ | 0x10 /* RGBA byte order */;
 const MAX_UNDO = 20;
 const BASE = new URL("./vendor/", import.meta.url).href;
 
-import { getPdfium, M, malloc, free, heap, putBytes, wstr as putString, floats, readFloats } from "./pdfium.js";
-import { planGap, findGaps, planInsert, insertPoints } from "./reflow.js";
+import { getPdfium, M, malloc, free, heap, putBytes, wstr as putString, floats, ints, readFloats } from "./pdfium.js";
+import { planGap, findGaps, planInsert, insertPoints, planBreak } from "./reflow.js";
 let P = null; // wrapped PDFium module
 
 const FONT_FILES = {
@@ -454,7 +454,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   let spaceDragging = false;
   function spotsOf(i) {
     if (!spotCache.has(i)) {
-      let v = { at: [], line: 14 };
+      let v = { spots: [], line: 14 };
       try { const n = P.FPDF_GetPageCount(doc), lo = Math.max(0, i - 4), hi = Math.min(n - 1, i + 4); v = insertPoints(layoutOf(lo, hi).pages, i - lo); } catch (e) { console.warn(e); }
       spotCache.set(i, v);
     }
@@ -463,11 +463,12 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   /** The row boundary nearest to the pointer, in layer pixels and PDF points. */
   function nearestSpot(layer, i, e) {
     const pv = pageView(i), rect = layer.getBoundingClientRect(), y = e.clientY - rect.top;
-    const { at, line } = spotsOf(i);
+    const { spots, line } = spotsOf(i);
     let best = null;
-    for (const a of at) {
-      const [, py] = pv.viewport.convertToViewportPoint(0, a);
-      if (!best || Math.abs(py - y) < Math.abs(best.py - y)) best = { py, at: a };
+    for (const sp of spots) {
+      if (mode === "pageBreak" && sp.first) continue;
+      const [, py] = pv.viewport.convertToViewportPoint(0, sp.at);
+      if (!best || Math.abs(py - y) < Math.abs(best.py - y)) best = { py, ...sp };
     }
     return best && Math.abs(best.py - y) < 60 ? { ...best, line } : null;
   }
@@ -481,7 +482,8 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     if (!s) { layer.querySelector(".einsert")?.remove(); return; }
     const g = guide(layer);
     g.style.top = s.py + "px"; g.style.height = "0px";
-    g.querySelector("span").textContent = t("editSpaceHere");
+    g.querySelector("span").textContent = t(mode === "pageBreak" ? "editBreakHere" : "editSpaceHere");
+    g.classList.toggle("break", mode === "pageBreak");
   }
   function dragSpace(layer, i, e) {
     const s = nearestSpot(layer, i, e);
@@ -490,11 +492,13 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const g = guide(layer);
     spaceDragging = true;
     layer.setPointerCapture(e.pointerId);
-    const amount = (ev) => Math.max(0, (ev.clientY - y0) / scale);
+    // down: more space; up: less (never less than nothing)
+    const amount = (ev) => Math.max(-s.space, (ev.clientY - y0) / scale);
     const move = (ev) => {
-      const h = amount(ev);
-      g.style.top = s.py + "px"; g.style.height = h * scale + "px";
-      g.querySelector("span").textContent = h * scale < 4 ? t("editSpaceHere") : t("editSpaceAmount", { n: Math.round(h) });
+      const h = amount(ev), px = Math.abs(h) * scale;
+      g.classList.toggle("shrink", h < 0);
+      g.style.top = (h < 0 ? s.py - px / 2 : s.py) + "px"; g.style.height = px + "px";
+      g.querySelector("span").textContent = px < 4 ? t("editSpaceHere") : h > 0 ? t("editSpaceAmount", { n: Math.round(h) }) : t("editSpaceLess", { n: Math.round(-h), left: Math.round(s.space + h) });
     };
     const up = async (ev) => {
       layer.removeEventListener("pointermove", move);
@@ -504,14 +508,80 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       g.remove();
       if (ev.type === "pointercancel") return;
       let h = amount(ev);
-      if (h * scale < 4) h = s.line; // a click opens one empty line
       setMode("select");
+      if (h < 0 && -h * scale >= 4) { await closeGap({ page: i, at: s.at, space: s.space + h }); return; }
+      if (Math.abs(h) * scale < 4) h = s.line; // a click opens one empty line
       await insertSpace(i, s.at, h);
     };
     layer.addEventListener("pointermove", move);
     layer.addEventListener("pointerup", up);
     layer.addEventListener("pointercancel", up);
   }
+  function releasePages() {
+    for (const { page, text } of pages.values()) {
+      if (text) P.FPDFText_ClosePage(text);
+      if (form) P.FORM_OnBeforeClosePage(page, form);
+      P.FPDF_ClosePage(page);
+    }
+    pages.clear();
+  }
+  /** Page break: the rows below "at" go to a new page (a copy of this one with only them) right after it. */
+  async function pageBreak(i, at) {
+    snapshot();
+    const n = P.FPDF_GetPageCount(doc), lo = Math.max(0, i - 4), hi = Math.min(n - 1, i + 4);
+    const { pages: layout } = layoutOf(lo, hi);
+    const plan = planBreak(layout, { page: i - lo, at });
+    if (!plan.ok) { undo.pop(); ui.undo.disabled = !undo.length; toast(t("editBreakNoSpot")); return; }
+    const kOf = (id) => +id.split(":")[1];
+    const below = new Set(plan.below.map(kOf)), keep = new Map([...plan.keep].map(([id, dy]) => [kOf(id), dy]));
+    const count = P.FPDFPage_CountObjects(getPage(i).page);
+    const bytes = save(); // writes every changed page into the document
+    releasePages();
+    // the copy of this page, right after it
+    const ptr = putBytes(bytes), src = P.FPDF_LoadMemDocument(ptr, bytes.length, password);
+    const ix = ints(i);
+    const okImport = src && P.FPDF_ImportPagesByIndex(doc, src, ix, 1, i + 1);
+    free(ix);
+    if (src) P.FPDF_CloseDocument(src);
+    free(ptr);
+    const orig = getPage(i).page;
+    let copy = okImport ? getPage(i + 1).page : 0;
+    if (copy && P.FPDFPage_CountObjects(copy) === count) {
+      for (let k = count - 1; k >= 0; k--) {
+        const o = P.FPDFPage_GetObject(copy, k);
+        if (!keep.has(k)) { if (P.FPDFPage_RemoveObject(copy, o)) P.FPDFPageObj_Destroy(o); }
+        else if (keep.get(k)) { P.FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, keep.get(k)); P.FPDFPageObj_TransformClipPath(o, 1, 0, 0, 1, 0, keep.get(k)); }
+      }
+      for (let k = count - 1; k >= 0; k--) if (below.has(k)) removeObject(orig, P.FPDFPage_GetObject(orig, k));
+    } else {
+      // could not copy the page: a blank page of the same size gets the rows
+      if (okImport) { releasePages(); P.FPDFPage_Delete(doc, i + 1); }
+      const o0 = getPage(i).page;
+      const blank = P.FPDFPage_New(doc, i + 1, P.FPDF_GetPageWidthF(o0), P.FPDF_GetPageHeightF(o0));
+      if (blank) P.FPDF_ClosePage(blank);
+      releasePages();
+      const a = getPage(i).page, b = getPage(i + 1).page;
+      const objs = [...below].sort((x, y) => y - x).map((k) => P.FPDFPage_GetObject(a, k));
+      for (const o of objs.reverse()) {
+        if (!P.FPDFPage_RemoveObject(a, o)) continue;
+        P.FPDFPage_InsertObject(b, o);
+        const d = [...plan.keep.values()].find((v) => v) || 0;
+        if (d) { P.FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, d); P.FPDFPageObj_TransformClipPath(o, 1, 0, 0, 1, 0, d); }
+      }
+    }
+    P.FPDFPage_GenerateContent(getPage(i).page);
+    P.FPDFPage_GenerateContent(getPage(i + 1).page);
+    gapCache.clear();
+    const out = save();
+    close();
+    await open(out);
+    modified.clear(); clearSelection(); pagesChanged = true;
+    await reload(out);
+    onChange?.();
+    toast(t("editBreakDone", { n: i + 2 }), 4000);
+    redrawAll();
+  }
+
   async function insertSpace(i, at, height) {
     snapshot();
     const { pages: layout, handles } = layoutOf();
@@ -753,7 +823,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     layer.replaceChildren();
     layer.classList.toggle("adding", mode === "addText" || mode === "placeImage" || mode === "drawShape");
     layer.classList.toggle("drawing", mode === "drawShape");
-    layer.classList.toggle("spacing", mode === "insertSpace");
+    layer.classList.toggle("spacing", mode === "insertSpace" || mode === "pageBreak");
     if (modified.has(i)) renderPreview(i, pv, layer);
     // "close the gap" offers, beside the page so they never cover the text
     const offers = [];
@@ -854,6 +924,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       }
       if (mode === "drawShape") { e.preventDefault(); drawShape(layer, i, e); return; }
       if (mode === "insertSpace") { e.preventDefault(); dragSpace(layer, i, e); return; }
+      if (mode === "pageBreak") {
+        e.preventDefault();
+        const sp = nearestSpot(layer, i, e);
+        if (!sp || sp.first) { toast(t("editBreakNoSpot")); return; }
+        setMode("select");
+        pageBreak(i, sp.at);
+        return;
+      }
       if (mode === "addText") {
         e.preventDefault();
         const [x, y] = pv.viewport.convertToPdfPoint(px, py);
@@ -907,7 +985,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       layer.addEventListener("pointerup", up);
       layer.addEventListener("pointercancel", up);
     });
-    layer.addEventListener("pointermove", (e) => { if (mode === "insertSpace" && !spaceDragging) showSpot(layer, +layer.dataset.page, e); });
+    layer.addEventListener("pointermove", (e) => { if ((mode === "insertSpace" || mode === "pageBreak") && !spaceDragging) showSpot(layer, +layer.dataset.page, e); });
     layer.addEventListener("pointerleave", () => { if (!spaceDragging) layer.querySelector(".einsert")?.remove(); });
     layer.addEventListener("dblclick", (e) => {
       // the box may have been re-created by the first click, so fall back to the selected one
@@ -978,6 +1056,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
         </div>
       </span>
       <button class="btn sm secondary" data-e="space" title="${t("editSpaceHint")}">${icon("unfold-vertical", 16)}<span>${t("editSpace")}</span></button>
+      <button class="btn sm secondary" data-e="pbreak" title="${t("editBreakHint")}">${icon("page-break", 16)}<span>${t("editBreak")}</span></button>
       <div class="sep"></div>
       <select class="field sm" data-e="family"><option value="sans">Sans</option><option value="serif">Serif</option></select>
       <input class="field num sm" data-e="size" type="number" min="4" max="200" step="1" value="12" title="${t("fontSize")}">
@@ -996,7 +1075,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <button class="btn primary sm" data-e="done">${t("done")}</button>
       <input type="file" accept="image/*" hidden data-e="file">`;
     const q = (n) => bar.querySelector(`[data-e="${n}"]`);
-    const els = Object.fromEntries(["addText", "addImage", "addSig", "shape", "shapeMenu", "space", "stroke", "family", "size", "bold", "italic", "color", "replace", "delete", "delPage", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
+    const els = Object.fromEntries(["addText", "addImage", "addSig", "shape", "shapeMenu", "space", "pbreak", "stroke", "family", "size", "bold", "italic", "color", "replace", "delete", "delPage", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
     let fileTarget = "add";
     els.addText.onclick = () => setMode(mode === "addText" ? "select" : "addText");
     els.addImage.onclick = () => { fileTarget = "add"; els.file.click(); };
@@ -1024,6 +1103,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     els.italic.onclick = () => toggle(els.italic);
     els.family.onchange = els.size.onchange = els.color.onchange = els.stroke.onchange = () => restyleSelected();
     els.space.onclick = () => setMode(mode === "insertSpace" ? "select" : "insertSpace");
+    els.pbreak.onclick = () => setMode(mode === "pageBreak" ? "select" : "pageBreak");
     const menu = (open) => { els.shapeMenu.hidden = !open; els.shape.setAttribute("aria-expanded", open); };
     els.shape.onclick = (e) => { e.stopPropagation(); menu(els.shapeMenu.hidden); };
     els.shapeMenu.onclick = (e) => {
@@ -1045,7 +1125,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     ui.undo.disabled = !undo.length;
     ui.addText.classList.toggle("on", mode === "addText");
     const isShape = it?.type === FPDF_PAGEOBJ_PATH;
-    ui.hint.textContent = mode === "insertSpace" ? t("editHintSpace") : mode === "drawShape" ? t("editHintDraw") : mode === "placeImage" ? t("editHintPlace") : mode === "addText" ? t("editHintAdd") : many ? t("editHintMany", { n: selected.ks.size }) : isText ? t("editHintText") : isImg ? t("editHintImage") : isShape ? t("editHintShape") : t("editHint");
+    ui.hint.textContent = mode === "pageBreak" ? t("editHintBreak") : mode === "insertSpace" ? t("editHintSpace") : mode === "drawShape" ? t("editHintDraw") : mode === "placeImage" ? t("editHintPlace") : mode === "addText" ? t("editHintAdd") : many ? t("editHintMany", { n: selected.ks.size }) : isText ? t("editHintText") : isImg ? t("editHintImage") : isShape ? t("editHintShape") : t("editHint");
     ui.hint.title = ui.hint.textContent;
     if (isShape) {
       ui.color.value = it.color;
@@ -1101,13 +1181,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
 
   function setMode(m) {
     mode = m;
-    if (m === "addText" || m === "drawShape" || m === "insertSpace") select(null, null);
+    if (m === "addText" || m === "drawShape" || m === "insertSpace" || m === "pageBreak") select(null, null);
     if (m !== "placeImage") pending = null;
     for (const l of document.querySelectorAll(".edit-layer")) l.classList.toggle("adding", m === "addText" || m === "placeImage" || m === "drawShape");
     ui.shape.classList.toggle("on", m === "drawShape");
     ui.space.classList.toggle("on", m === "insertSpace");
+    ui.pbreak.classList.toggle("on", m === "pageBreak");
     spotCache.clear();
-    for (const l of document.querySelectorAll(".edit-layer")) { l.classList.toggle("spacing", m === "insertSpace"); l.querySelector(".einsert")?.remove(); }
+    for (const l of document.querySelectorAll(".edit-layer")) { l.classList.toggle("spacing", m === "insertSpace" || m === "pageBreak"); l.querySelector(".einsert")?.remove(); }
     for (const l of document.querySelectorAll(".edit-layer")) l.classList.toggle("drawing", m === "drawShape");
     updateToolbar();
   }

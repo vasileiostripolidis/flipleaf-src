@@ -146,7 +146,7 @@ function analyze(pages, phantomPage = -1, phantomBoxes = []) {
   const newParagraph = (a, b) => b.l > leftEdge + 8 || a.r + firstWord(b) + 4 < rightEdge;
   /** The spacing two rows should have when they follow each other. */
   const spacing = (a, b) => (isHeading(a) || isHeading(b) || (hasText(a) && hasText(b) && newParagraph(a, b)) ? paraSp : lineSp);
-  return { n, body, tops, bottom, lineSp, paraSp, rowH, isHeading, spacing };
+  return { n, rows, furniture, body, tops, bottom, lineSp, paraSp, rowH, isHeading, spacing };
 }
 
 /**
@@ -224,7 +224,9 @@ export function planGap(pages, gap) {
     if (j === -1) j = own.length; // below the last row: only the next page can fill it
     const prev = own[j - 1], next = own[j];
     if (next) {
-      const target = prev ? prev.b - spacing(prev, next) : tops[gap.page] ?? next.t;
+      // (or the spacing the user asked for)
+      const want = typeof gap.space === "number" ? Math.max(0, gap.space) : prev ? spacing(prev, next) : 0;
+      const target = prev ? prev.b - want : tops[gap.page] ?? next.t;
       const dy = target - next.t;
       if (dy > 0.5) for (let x = j; x < own.length; x++) shiftRow(own[x], gap.page, dy);
     }
@@ -272,12 +274,13 @@ export function planGap(pages, gap) {
 /** Where new space can be opened on page i: the boundaries between rows (PDF heights), and one line's height. */
 export function insertPoints(pages, i) {
   const { body, lineSp, rowH } = analyze(pages);
-  const own = body[i] || [], at = [];
+  // spots: { at, space } — space is the room there is now between the two rows
+  const own = body[i] || [], spots = [];
   if (own.length) {
-    at.push(own[0].t + Math.min(lineSp, 4));
-    for (let j = 1; j < own.length; j++) at.push((own[j - 1].b + own[j].t) / 2);
+    spots.push({ at: own[0].t + Math.min(lineSp, 4), space: 0, first: true });
+    for (let j = 1; j < own.length; j++) spots.push({ at: (own[j - 1].b + own[j].t) / 2, space: Math.max(0, own[j - 1].b - own[j].t) });
   }
-  return { at, line: rowH + lineSp };
+  return { spots, line: rowH + lineSp };
 }
 
 /**
@@ -337,4 +340,29 @@ export function planInsert(pages, { page, at, height }) {
     if (newPages.length > 50) return fail;
   }
   return { ok: moves.size > 0, moves, newPages };
+}
+
+/**
+ * Page break at height "at": the rows below it go to a new page right after this one. The new page is
+ * a copy of this page (same size, header, footer, background) with only those rows, moved to the top.
+ * Returns { ok, below: [ids] (leave this page), keep: Map(id → dy) (what stays on the copy), number: [ids] }.
+ */
+export function planBreak(pages, { page, at }) {
+  const fail = { ok: false };
+  const { body, tops, rows, furniture } = analyze(pages);
+  const own = body[page] || [];
+  const j = own.findIndex((r) => (r.t + r.b) / 2 < at);
+  if (j <= 0) return fail; // nothing above (the page would be empty) or nothing below
+  const below = own.slice(j), dy = (tops[page] ?? below[0].t) - below[0].t;
+  const keep = new Map();
+  for (const r of below) for (const o of r.items) keep.set(o.id, dy);
+  // the copy keeps the header and footer, but not a page number (it would repeat this page's number)
+  for (const r of furniture[page]) {
+    if (/^[#\-–—.·|/()\[\]σελιδαpage]*$/.test(r.sig) && r.sig.includes("#")) continue;
+    for (const o of r.items) keep.set(o.id, 0);
+  }
+  // objects that belong to no row (backgrounds, frames) stay on both pages
+  const inRows = new Set(rows[page].flatMap((r) => r.items.map((o) => o.id)));
+  for (const o of pages[page].objs) if (!inRows.has(o.id)) keep.set(o.id, 0);
+  return { ok: true, below: below.flatMap((r) => r.items.map((o) => o.id)), keep };
 }
