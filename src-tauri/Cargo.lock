@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "flipleaf"
-version = "1.17.3"
+version = "1.17.4"
 dependencies = [
  "serde",
  "serde_json",

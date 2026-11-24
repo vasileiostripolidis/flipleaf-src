@@ -263,7 +263,7 @@ pre.legal { margin: 0; height: min(52vh, 460px); overflow: auto; white-space: pr
 .readbar { position: fixed; bottom: 18px; left: 50%; translate: -50% 0; z-index: 40; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); }
 .drop-hint { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 70%, transparent); pointer-events: none; }
 .drop-hint div { border: 2px dashed var(--brand); border-radius: 18px; padding: 48px 64px; font-size: 18px; font-weight: 600; background: var(--surface); box-shadow: var(--shadow); }
-.toast { position: fixed; bottom: 22px; left: 50%; translate: -50% 0; z-index: 70; background: #1c2420; color: #eef3f0; padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow); max-width: 90vw; }
+.toast { position: fixed; bottom: 22px; left: 50%; translate: -50% 0; z-index: 70; background: #1c2420; color: #eef3f0; padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow); max-width: 90vw; pointer-events: none; }
 .fl-tip { position: fixed; z-index: 80; pointer-events: none; background: #1c2420; color: #eef3f0; font-size: 12px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; }
 .fl-tip kbd { color: #a8b5ae; margin-left: 6px; }
 .progress { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgb(10 15 12 / .35); }
@@ -529,3 +529,11 @@ html[data-theme="dark"] .epage-del:hover { background: color-mix(in srgb, #d9302
 .einsert.shrink { border-top: 0; border-block: 2px solid #c0392b; background: repeating-linear-gradient(135deg, rgb(192 57 43 / .18) 0 6px, transparent 6px 12px); }
 .einsert.shrink span { background: #c0392b; }
 .einsert.break { border-top: 2px dashed var(--brand); background: none; }
+.ecaret { position: absolute; z-index: 6; width: 0; border-left: 2px solid var(--brand); transform: translateY(-2px); pointer-events: none; animation: fl-blink 1s steps(2, start) infinite; }
+.ecaret::before { content: ""; position: absolute; left: -5px; top: -3px; width: 8px; border-top: 2px solid var(--brand); }
+@keyframes fl-blink { to { visibility: hidden; } }
+.emenu { position: fixed; z-index: 1000; min-width: 210px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); display: grid; gap: 1px; }
+.emenu button { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.emenu button:hover:not(:disabled) { background: var(--hover); }
+.emenu button:disabled { opacity: .4; cursor: default; }
+.emenu kbd { margin-left: auto; font: inherit; font-size: 12px; color: var(--muted); }

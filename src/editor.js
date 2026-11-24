@@ -462,7 +462,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const page = selected.page;
     const bytes = save();
     // objects are found again by kind and place (their order can change when the page is saved)
-    clip = { bytes, page, want: items.map((o) => ({ type: o.type, b: o.bounds })), cut };
+    clip = { bytes, page, want: items.map((o) => ({ type: o.type, b: o.bounds })), cut, time: performance.now() };
     if (cut) {
       snapshot();
       for (const it of items) removeObject(getPage(page).page, it.obj);
@@ -473,11 +473,18 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       changed(page);
     }
     updateToolbar();
+    drawCaret();
     toast(t(cut ? "editCutDone" : "editCopied", { n: items.length }));
   }
-  async function paste(atPointer = true) {
+  /**
+   * Pastes what was copied. Where: at "point" (right-click), else at the cursor (the last click on a page),
+   * else where the pointer is, else where it was. It keeps its left/right position (its alignment), and its
+   * top goes to that height.
+   */
+  async function paste(point = null) {
     if (!clip) return;
-    const target = hoverPage ?? (selected ? selected.page : viewer.currentPageNumber - 1);
+    point ||= (caret && caret.time > clip.time ? caret : null) || hoverPoint; // (a click made before copying does not count)
+    const target = point?.page ?? hoverPage ?? (selected ? selected.page : viewer.currentPageNumber - 1);
     if (target < 0 || target >= P.FPDF_GetPageCount(doc)) return;
     const ptr = putBytes(clip.bytes), src = P.FPDF_LoadMemDocument(ptr, clip.bytes.length, password);
     let pasted = 0;
@@ -521,7 +528,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       const bs = pieces.map((o) => readFloats(4, (p) => P.FPDFPageObj_GetBounds(o, p, p + 4, p + 8, p + 12))).filter(Boolean);
       const l = Math.min(...bs.map((b) => b[0])), tp = Math.max(...bs.map((b) => b[3]));
       let dx = 0, dy = 0;
-      if (atPointer && hoverPoint && hoverPoint.page === target && bs.length) { dx = hoverPoint.at[0] - l; dy = hoverPoint.at[1] - tp; }
+      if (point && point.page === target && bs.length) dy = point.at[1] - tp;
       else if (target === clip.page && !clip.cut) { dx = 12; dy = -12; }
       for (const o of pieces) {
         if (dx || dy) { P.FPDFPageObj_Transform(o, 1, 0, 0, 1, dx, dy); P.FPDFPageObj_TransformClipPath(o, 1, 0, 0, 1, dx, dy); }
@@ -540,6 +547,54 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       if (src) P.FPDF_CloseDocument(src);
       free(ptr);
     }
+  }
+
+  /** The cursor: where Ctrl+V pastes. Shown as a blinking line while there is something to paste. */
+  let caret = null; // { page, at: [x, y] }
+  function setCaret(i, at) {
+    caret = { page: i, at, time: performance.now() };
+    drawCaret();
+  }
+  function drawCaret() {
+    for (const c of document.querySelectorAll(".ecaret")) c.remove();
+    if (!caret || !clip || !active || caret.time < clip.time) return;
+    const pv = pageView(caret.page), layer = pv?.div?.querySelector(":scope > .edit-layer");
+    if (!layer) return;
+    const [x, y] = pv.viewport.convertToViewportPoint(...caret.at);
+    const c = document.createElement("div");
+    c.className = "ecaret";
+    Object.assign(c.style, { left: x + "px", top: y + "px", height: Math.max(14, 12 * pv.viewport.scale) + "px" });
+    c.title = t("editCaret");
+    layer.append(c);
+  }
+  /** Right-click menu: cut, copy, paste here, delete. */
+  function contextMenu(layer, i, e) {
+    e.preventDefault();
+    document.querySelector(".emenu")?.remove();
+    const pv = pageView(i), r = layer.getBoundingClientRect();
+    const at = pv.viewport.convertToPdfPoint(e.clientX - r.left, e.clientY - r.top);
+    const box = e.target.closest(".eobj");
+    if (box && !(selected?.page === i && selected.ks.has(+box.dataset.k))) select(i, +box.dataset.k);
+    const has = !!selected;
+    const menu = document.createElement("div");
+    menu.className = "emenu";
+    const item = (label, key, ic, on, run) => {
+      const b = document.createElement("button");
+      b.innerHTML = `${icon(ic, 16)}<span></span><kbd>${key}</kbd>`;
+      b.querySelector("span").textContent = label.replace(/\s*\([^)]*\)\s*$/, "");
+      b.disabled = !on;
+      b.onclick = () => { menu.remove(); run(); };
+      menu.append(b);
+    };
+    item(t("editCut"), "Ctrl+X", "scissors", has, () => copySelected(true));
+    item(t("editCopy"), "Ctrl+C", "copy", has, () => copySelected(false));
+    item(t("editPasteHere"), "Ctrl+V", "clipboard-paste", !!clip, () => paste({ page: i, at }));
+    item(t("editDelete"), "Del", "trash-2", has, () => deleteSelected());
+    document.body.append(menu);
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    Object.assign(menu.style, { left: Math.min(e.clientX, innerWidth - w - 8) + "px", top: Math.min(e.clientY, innerHeight - h - 8) + "px" });
+    const close = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); removeEventListener("pointerdown", close, true); } };
+    setTimeout(() => addEventListener("pointerdown", close, true));
   }
 
   /* ---------------------------------------------------------- opening up space */
@@ -872,6 +927,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       offers.push({ gap: { page: i, at: g.at }, top: g.top, bottom: g.bottom, auto: true });
     }
     for (const o of offers) layer.append(gapOffer(pv, i, o));
+    if (caret?.page === i) setTimeout(drawCaret);
     const del = document.createElement("button");
     del.className = "epage-del";
     del.innerHTML = `${icon("trash-2", 15)}<span></span>`;
@@ -974,6 +1030,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       }
       const box = e.target.closest(".eobj");
       const add = e.shiftKey || e.ctrlKey || e.metaKey;
+      setCaret(i, pv.viewport.convertToPdfPoint(px, py));
       if (!box) { e.preventDefault(); marquee(layer, i, e, add); return; }
       e.preventDefault();
       const k = +box.dataset.k;
@@ -1019,6 +1076,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       layer.addEventListener("pointercancel", up);
     });
     layer.addEventListener("pointerenter", () => { hoverPage = +layer.dataset.page; });
+    layer.addEventListener("contextmenu", (e) => { if (mode === "select") contextMenu(layer, +layer.dataset.page, e); });
     layer.addEventListener("pointerleave", () => { hoverPoint = null; });
     layer.addEventListener("pointermove", (e) => {
       const i = +layer.dataset.page, pv = pageView(i), r = layer.getBoundingClientRect();
@@ -1138,7 +1196,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     els.delete.onclick = () => deleteSelected();
     els.cut.onclick = () => copySelected(true);
     els.copy.onclick = () => copySelected(false);
-    els.paste.onclick = () => paste(false);
+    els.paste.onclick = () => paste();
     els.delPage.onclick = () => deletePage(viewer.currentPageNumber - 1);
     els.undo.onclick = () => doUndo();
     els.cancel.onclick = () => exit(false);
@@ -1277,7 +1335,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   /* ---------------------------------------------------------- session */
   async function enter(bytes, pw = "") {
     password = pw || "";
-    originalBytes = bytes.slice(); pagesChanged = false; lastGap = null; gapCache.clear(); hidden.clear(); hoverPage = null;
+    originalBytes = bytes.slice(); pagesChanged = false; lastGap = null; gapCache.clear(); hidden.clear(); hoverPage = null; caret = null;
     await open(bytes);
     active = true; selected = null; mode = "select"; undo.length = 0; modified.clear();
     document.body.classList.add("editing");

@@ -1,6 +1,6 @@
 [package]
 name = "flipleaf"
-version = "1.17.3"
+version = "1.17.4"
 description = "Flipleaf: a feather-light PDF reader"
 authors = ["Vasileios Tripolidis"]
 license = "LicenseRef-Proprietary"
