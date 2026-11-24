@@ -449,6 +449,99 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     decorate(i);
   }
 
+  /* ---------------------------------------------------------- cut, copy and paste between pages */
+  // The clipboard keeps the document as it was and which objects were picked; pasting copies them out of
+  // that version into the page (through a copy of the page as a form, whose pieces are then taken out),
+  // so pasted text stays real, editable text — also after Undo, and as often as wanted.
+  let clip = null;      // { bytes, page, want: [{ type, b: bounds }], cut }
+  let hoverPage = null; // the page the pointer was last over: where Ctrl+V pastes
+  let hoverPoint = null; // { page, at: [x, y] } while the pointer is over a page: the pasted block's top-left goes there
+  function copySelected(cut) {
+    const items = selectedItems();
+    if (!items.length) return;
+    const page = selected.page;
+    const bytes = save();
+    // objects are found again by kind and place (their order can change when the page is saved)
+    clip = { bytes, page, want: items.map((o) => ({ type: o.type, b: o.bounds })), cut };
+    if (cut) {
+      snapshot();
+      for (const it of items) removeObject(getPage(page).page, it.obj);
+      selected = null;
+      // like a deletion, the cut leaves a gap that can be closed
+      const boxes = items.filter((it) => it.type !== FPDF_PAGEOBJ_PATH).map((it) => ({ l: it.bounds[0], b: it.bounds[1], r: it.bounds[2], t: it.bounds[3] }));
+      if (boxes.length) lastGap = { page, boxes };
+      changed(page);
+    }
+    updateToolbar();
+    toast(t(cut ? "editCutDone" : "editCopied", { n: items.length }));
+  }
+  async function paste(atPointer = true) {
+    if (!clip) return;
+    const target = hoverPage ?? (selected ? selected.page : viewer.currentPageNumber - 1);
+    if (target < 0 || target >= P.FPDF_GetPageCount(doc)) return;
+    const ptr = putBytes(clip.bytes), src = P.FPDF_LoadMemDocument(ptr, clip.bytes.length, password);
+    let pasted = 0;
+    try {
+      if (!src) throw new Error("open");
+      const xo = P.FPDF_NewXObjectFromPage(doc, src, clip.page);
+      const form = xo && P.FPDF_NewFormObjectFromXObject(xo);
+      if (xo) P.FPDF_CloseXObject(xo);
+      if (!form) throw new Error("form");
+      const m = readFloats(6, (p) => P.FPDFPageObj_GetMatrix(form, p)) || [1, 0, 0, 1, 0, 0];
+      const kids = [];
+      for (let k = 0, c = P.FPDFFormObj_CountObjects(form); k < c; k++) {
+        const o = P.FPDFFormObj_GetObject(form, k);
+        if (o) kids.push({ o, type: P.FPDFPageObj_GetType(o), b: readFloats(4, (p) => P.FPDFPageObj_GetBounds(o, p, p + 4, p + 8, p + 12)) });
+      }
+      // (the form's own placement, applied to what is inside it, gives page positions)
+      const at = (x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+      const used = new Set(), pieces = [];
+      for (const w of clip.want) {
+        let best = null, d = Infinity;
+        for (const kd of kids) {
+          if (used.has(kd) || kd.type !== w.type || !kd.b) continue;
+          const [l, b] = at(kd.b[0], kd.b[1]), [r, t] = at(kd.b[2], kd.b[3]);
+          const dd = Math.abs(l - w.b[0]) + Math.abs(b - w.b[1]) + Math.abs(r - w.b[2]) + Math.abs(t - w.b[3]);
+          if (dd < d) { d = dd; best = kd; }
+        }
+        if (best && d < 4) used.add(best);
+      }
+      for (const kd of kids) {
+        if (!P.FPDFFormObj_RemoveObject(form, kd.o)) continue;
+        if (used.has(kd)) pieces.push(kd.o); else P.FPDFPageObj_Destroy(kd.o);
+      }
+      P.FPDFPageObj_Destroy(form);
+      if (!pieces.length) throw new Error("nothing");
+      const identity = Math.abs(m[0] - 1) + Math.abs(m[1]) + Math.abs(m[2]) + Math.abs(m[3] - 1) + Math.abs(m[4]) + Math.abs(m[5]) < 1e-6;
+      snapshot();
+      const page = getPage(target).page, first = P.FPDFPage_CountObjects(page);
+      for (const o of pieces) if (!identity) { P.FPDFPageObj_Transform(o, ...m); P.FPDFPageObj_TransformClipPath(o, ...m); }
+      // where it goes: its top-left corner at the pointer; otherwise where it was (a little lower and to the
+      // right when pasted again on its own page, so it does not hide the original)
+      const bs = pieces.map((o) => readFloats(4, (p) => P.FPDFPageObj_GetBounds(o, p, p + 4, p + 8, p + 12))).filter(Boolean);
+      const l = Math.min(...bs.map((b) => b[0])), tp = Math.max(...bs.map((b) => b[3]));
+      let dx = 0, dy = 0;
+      if (atPointer && hoverPoint && hoverPoint.page === target && bs.length) { dx = hoverPoint.at[0] - l; dy = hoverPoint.at[1] - tp; }
+      else if (target === clip.page && !clip.cut) { dx = 12; dy = -12; }
+      for (const o of pieces) {
+        if (dx || dy) { P.FPDFPageObj_Transform(o, 1, 0, 0, 1, dx, dy); P.FPDFPageObj_TransformClipPath(o, 1, 0, 0, 1, dx, dy); }
+        P.FPDFPage_InsertObject(page, o);
+        pasted++;
+      }
+      changed(target);
+      const ks = [];
+      for (let k = first; k < first + pasted; k++) ks.push(k);
+      selectMany(target, ks.filter((k) => objects(target).some((o) => o.k === k)));
+      toast(t("editPasted", { n: pasted, page: target + 1 }));
+    } catch (e) {
+      console.warn(e);
+      toast(t("editPasteFailed"));
+    } finally {
+      if (src) P.FPDF_CloseDocument(src);
+      free(ptr);
+    }
+  }
+
   /* ---------------------------------------------------------- opening up space */
   const spotCache = new Map(); // page → { at: [PDF heights between rows], line }
   let spaceDragging = false;
@@ -925,6 +1018,12 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       layer.addEventListener("pointerup", up);
       layer.addEventListener("pointercancel", up);
     });
+    layer.addEventListener("pointerenter", () => { hoverPage = +layer.dataset.page; });
+    layer.addEventListener("pointerleave", () => { hoverPoint = null; });
+    layer.addEventListener("pointermove", (e) => {
+      const i = +layer.dataset.page, pv = pageView(i), r = layer.getBoundingClientRect();
+      if (pv?.viewport) hoverPoint = { page: i, at: pv.viewport.convertToPdfPoint(e.clientX - r.left, e.clientY - r.top) };
+    });
     layer.addEventListener("pointermove", (e) => { if ((mode === "insertSpace" || mode === "pageBreak") && !spaceDragging) showSpot(layer, +layer.dataset.page, e); });
     layer.addEventListener("pointerleave", () => { if (!spaceDragging) layer.querySelector(".einsert")?.remove(); });
     layer.addEventListener("dblclick", (e) => {
@@ -1006,6 +1105,9 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <select class="field sm" data-e="stroke" title="${t("editStroke")}">${[0.5, 1, 1.5, 2, 3, 5, 8].map((w) => `<option value="${w}"${w === 2 ? " selected" : ""}>${String(w).replace(".", ",")} pt</option>`).join("")}</select>
       <div class="sep"></div>
       <button class="btn sm secondary" data-e="replace">${icon("image-plus", 16)}<span>${t("editReplace")}</span></button>
+      <button class="btn icon sm" data-e="cut" title="${t("editCut")} (Ctrl+X)">${icon("scissors", 16)}</button>
+      <button class="btn icon sm" data-e="copy" title="${t("editCopy")} (Ctrl+C)">${icon("copy", 16)}</button>
+      <button class="btn icon sm" data-e="paste" title="${t("editPaste")} (Ctrl+V)">${icon("clipboard-paste", 16)}</button>
       <button class="btn icon sm" data-e="delete" title="${t("editDelete")}">${icon("trash-2", 16)}</button>
       <button class="btn sm secondary" data-e="delPage" title="${t("editDeletePageHint")}">${icon("trash-2", 16)}<span>${t("editDeletePage")}</span></button>
       <button class="btn icon sm" data-e="undo" title="${t("undo")}">${icon("undo-2", 16)}</button>
@@ -1015,7 +1117,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       <button class="btn primary sm" data-e="done">${t("done")}</button>
       <input type="file" accept="image/*" hidden data-e="file">`;
     const q = (n) => bar.querySelector(`[data-e="${n}"]`);
-    const els = Object.fromEntries(["addText", "addImage", "addSig", "shape", "shapeMenu", "space", "pbreak", "stroke", "family", "size", "bold", "italic", "color", "replace", "delete", "delPage", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
+    const els = Object.fromEntries(["addText", "addImage", "addSig", "shape", "shapeMenu", "space", "pbreak", "stroke", "family", "size", "bold", "italic", "color", "replace", "cut", "copy", "paste", "delete", "delPage", "undo", "hint", "cancel", "done", "file"].map((n) => [n, q(n)]));
     let fileTarget = "add";
     els.addText.onclick = () => setMode(mode === "addText" ? "select" : "addText");
     els.addImage.onclick = () => { fileTarget = "add"; els.file.click(); };
@@ -1034,6 +1136,9 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       if (file) { pending = { file, widthPt: 150 }; setMode("placeImage"); }
     };
     els.delete.onclick = () => deleteSelected();
+    els.cut.onclick = () => copySelected(true);
+    els.copy.onclick = () => copySelected(false);
+    els.paste.onclick = () => paste(false);
     els.delPage.onclick = () => deletePage(viewer.currentPageNumber - 1);
     els.undo.onclick = () => doUndo();
     els.cancel.onclick = () => exit(false);
@@ -1061,7 +1166,8 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const it = selectedItem(), many = selected?.ks.size > 1;
     const isText = it?.type === FPDF_PAGEOBJ_TEXT, isImg = it?.type === FPDF_PAGEOBJ_IMAGE;
     ui.replace.hidden = !isImg;
-    ui.delete.disabled = !selected;
+    ui.delete.disabled = ui.cut.disabled = ui.copy.disabled = !selected;
+    ui.paste.disabled = !clip;
     ui.undo.disabled = !undo.length;
     ui.addText.classList.toggle("on", mode === "addText");
     const isShape = it?.type === FPDF_PAGEOBJ_PATH;
@@ -1147,6 +1253,8 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     // by key position, so the shortcuts also work with the Greek keyboard layout
     const letter = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
     if (mod && letter === "z") { e.preventDefault(); e.stopPropagation(); doUndo(); return; }
+    if (mod && (letter === "c" || letter === "x") && selected) { e.preventDefault(); e.stopPropagation(); copySelected(letter === "x"); return; }
+    if (mod && letter === "v" && clip) { e.preventDefault(); e.stopPropagation(); paste(); return; }
     if (mod && letter === "a") {
       e.preventDefault(); e.stopPropagation();
       const i = selected?.page ?? viewer.currentPageNumber - 1;
@@ -1169,7 +1277,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   /* ---------------------------------------------------------- session */
   async function enter(bytes, pw = "") {
     password = pw || "";
-    originalBytes = bytes.slice(); pagesChanged = false; lastGap = null; gapCache.clear(); hidden.clear();
+    originalBytes = bytes.slice(); pagesChanged = false; lastGap = null; gapCache.clear(); hidden.clear(); hoverPage = null;
     await open(bytes);
     active = true; selected = null; mode = "select"; undo.length = 0; modified.clear();
     document.body.classList.add("editing");
