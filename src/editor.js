@@ -147,12 +147,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
 
   /* ---------------------------------------------------------- modifying */
   function snapshot() {
+    lastGap = null; // any other change ends the "close the gap" offer
     undo.push(save());
     if (undo.length > MAX_UNDO) undo.shift();
     ui.undo.disabled = false;
   }
   async function doUndo() {
     if (!undo.length) return;
+    lastGap = null;
     const bytes = undo.pop();
     const keep = new Set(modified);
     close();
@@ -161,6 +163,164 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     selected = null;
     ui.undo.disabled = !undo.length;
     if (pagesChanged) { modified.clear(); await reload(bytes); }
+    redrawAll();
+  }
+
+  /* ---------------------------------------------------------- closing the gap left by deleted content */
+  // PDF pages have no text flow, so "closing the gap" is done by hand: whatever is below the gap moves
+  // up, then whole lines from the next page move up to fill the room that frees at the bottom, and so
+  // on to the end of the document. Headers, footers and page numbers stay where they are.
+  let lastGap = null; // { page, l, b, r, t } (PDF points) of what was just deleted
+
+  function boxesOf(i) {
+    const { page, text } = getPage(i);
+    const n = P.FPDFPage_CountObjects(page), out = [];
+    for (let k = 0; k < n; k++) {
+      const o = P.FPDFPage_GetObject(page, k), b = readFloats(4, (p) => P.FPDFPageObj_GetBounds(o, p, p + 4, p + 8, p + 12));
+      if (!b || (b[2] - b[0] < 0.1 && b[3] - b[1] < 0.1)) continue;
+      const type = P.FPDFPageObj_GetType(o);
+      let sig = "";
+      if (type === FPDF_PAGEOBJ_TEXT) {
+        const len = P.FPDFTextObj_GetText(o, text, 0, 0);
+        if (len > 2) { const buf = malloc(len); P.FPDFTextObj_GetText(o, text, buf, len); sig = M().UTF16ToString(buf); free(buf); }
+        sig = sig.replace(/\d+/g, "#").trim(); // page numbers count as the same text
+      }
+      // spaces and invisible text: they move with their line but take no room
+      const blank = type === FPDF_PAGEOBJ_TEXT && (!sig || P.FPDFTextObj_GetTextRenderMode(o) === 3);
+      out.push({ k, o, type, sig, blank, l: b[0], b: b[1], r: b[2], t: b[3] });
+    }
+    return out;
+  }
+  /** Objects in the top/bottom bands that repeat at the same place on other pages (headers, footers, numbers). */
+  function furnitureOf(all, heights, i) {
+    const set = new Set(), H = heights[i];
+    const others = [];
+    for (let d = 1; others.length < 6 && (i - d >= 0 || i + d < all.length); d++) { if (i + d < all.length) others.push(all[i + d]); if (i - d >= 0 && others.length < 6) others.push(all[i - d]); }
+    if (!others.length) return set;
+    for (const x of all[i]) {
+      if (x.b > H * 0.15 && x.t < H * 0.85) continue; // only near the top or bottom edge
+      if (x.type === FPDF_PAGEOBJ_TEXT && !x.sig) continue;
+      let hits = 0;
+      for (const pg of others) if (pg.some((y) => y.type === x.type && y.sig === x.sig && Math.abs(y.t - x.t) < 2 && Math.abs(y.b - x.b) < 2 && Math.abs((y.l + y.r) / 2 - (x.l + x.r) / 2) < 60)) hits++;
+      if (hits >= Math.ceil(others.length / 2)) set.add(x.k);
+    }
+    return set;
+  }
+  const vis = (objs) => objs.filter((x) => !x.blank);
+  /** Groups objects into lines (objects that overlap vertically), top to bottom. */
+  function linesOf(objs) {
+    const sorted = vis(objs).sort((a, b) => b.t - a.t), lines = [];
+    for (const o of sorted) {
+      const ln = lines[lines.length - 1];
+      if (ln && o.t > ln.b + 0.3) { ln.items.push(o); ln.b = Math.min(ln.b, o.b); }
+      else lines.push({ t: o.t, b: o.b, items: [o] });
+    }
+    for (const o of objs) {
+      if (!o.blank) continue;
+      const c = (o.t + o.b) / 2, ln = lines.find((l) => c <= l.t + 1 && c >= l.b - 1);
+      if (ln) ln.items.push(o);
+    }
+    return lines;
+  }
+  const move = (o, dy) => { if (Math.abs(dy) > 0.01) P.FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, dy); };
+
+  async function closeGap() {
+    const g = lastGap;
+    if (!g) return;
+    lastGap = null;
+    snapshot();
+    // a fresh copy: the pages' content is cloned from it, object for object
+    const srcBytes = save();
+    close();
+    await open(srcBytes);
+    const srcPtr = putBytes(srcBytes), src = P.FPDF_LoadMemDocument(srcPtr, srcBytes.length, password);
+    try {
+      const n = P.FPDF_GetPageCount(doc);
+      const all = [], heights = [], counts = [];
+      for (let i = 0; i < n; i++) { const pg = getPage(i).page; all.push(boxesOf(i)); heights.push(P.FPDF_GetPageHeightF(pg)); counts.push(P.FPDFPage_CountObjects(pg)); }
+      const furn = all.map((_, i) => furnitureOf(all, heights, i));
+      const body = (i) => all[i].filter((x) => !furn[i].has(x.k));
+      // the lowest line text reaches on full pages = the bottom margin
+      const lows = all.map((_, i) => vis(body(i))).filter((b) => b.length).map((b) => Math.min(...b.map((x) => x.b)));
+      const bottom = lows.length > 1 ? Math.min(...lows.slice(0, -1)) : lows[0] ?? 36;
+      const changedPages = new Set([g.page]);
+      // line spacing and paragraph spacing of the document, and where text ends on the right
+      const gaps = [];
+      for (let i = 0; i < n; i++) { const ls = linesOf(body(i)); for (let j = 1; j < ls.length; j++) gaps.push(ls[j - 1].b - ls[j].t); }
+      gaps.sort((a, b) => a - b);
+      const lineGap = gaps.length ? Math.max(1, gaps[Math.floor(gaps.length / 2)]) : 4;
+      const big = gaps.filter((d) => d > lineGap * 1.5 + 2);
+      const paraGap = big.length ? big[Math.floor(big.length / 2)] : lineGap;
+      const rightEdge = Math.max(...all.flatMap((_, i) => vis(body(i)).map((x) => x.r)), 0);
+      // a short last line means the paragraph ended there
+      const spacingAfter = (objs) => { const ls = linesOf(objs), last = ls[ls.length - 1]; return last && Math.max(...last.items.map((x) => x.r)) < rightEdge - 40 ? paraGap : lineGap; };
+
+      // 1. on the page itself, everything below the gap moves up to where the deleted content began
+      let cur = g.page;
+      // leftover spaces inside the gap go too
+      for (const x of body(cur)) {
+        const c = (x.t + x.b) / 2;
+        if (x.blank && c < g.t && c > g.b && P.FPDFPage_RemoveObject(getPage(cur).page, x.o)) { P.FPDFPageObj_Destroy(x.o); x.gone = true; }
+      }
+      const rest = (i) => body(i).filter((x) => !x.gone);
+      const below = rest(cur).filter((x) => (x.t + x.b) / 2 < g.b + 0.5 && x.r > g.l - 400 && x.l < g.r + 400);
+      if (vis(below).length) { const dy = g.t - Math.max(...vis(below).map((x) => x.t)); if (dy > 0) for (const x of below) { move(x.o, dy); x.t += dy; x.b += dy; } }
+      const lowest = (objs) => (vis(objs).length ? Math.min(...vis(objs).map((x) => x.b)) : null);
+      let curBottom = lowest(rest(cur));
+      let curGap = spacingAfter(rest(cur));
+
+      // 2. whole lines from the next pages move up, page after page
+      while (cur + 1 < n) {
+        const nxt = cur + 1, lines = linesOf(rest(nxt));
+        if (!lines.length) break;
+        const T2 = lines[0].t;
+        const targetTop = curBottom === null ? T2 : curBottom - curGap;
+        const dy = targetTop - T2;
+        const take = [];
+        for (const ln of lines) { if (ln.b + dy < bottom - 0.5) break; take.push(ln); }
+        if (!take.length) break;
+        const keep = new Set(take.flatMap((ln) => ln.items.map((x) => x.k)));
+        // copy of the next page with only the lines that move, placed at the bottom of this page
+        const xo = P.FPDF_NewXObjectFromPage(doc, src, nxt);
+        const fo = xo && P.FPDF_NewFormObjectFromXObject(xo);
+        if (xo) P.FPDF_CloseXObject(xo);
+        if (!fo || P.FPDFFormObj_CountObjects(fo) !== counts[nxt]) { if (fo) P.FPDFPageObj_Destroy(fo); break; }
+        for (let k = counts[nxt] - 1; k >= 0; k--) {
+          if (keep.has(k)) continue;
+          const o = P.FPDFFormObj_GetObject(fo, k);
+          if (o && P.FPDFFormObj_RemoveObject(fo, o)) P.FPDFPageObj_Destroy(o);
+        }
+        move(fo, dy);
+        P.FPDFPage_InsertObject(getPage(cur).page, fo);
+        // remove them from the next page and close the gap at its top
+        for (const ln of take) for (const x of ln.items) { if (P.FPDFPage_RemoveObject(getPage(nxt).page, x.o)) P.FPDFPageObj_Destroy(x.o); x.gone = true; }
+        const left = rest(nxt);
+        if (vis(left).length) { const up = T2 - Math.max(...vis(left).map((x) => x.t)); for (const x of left) { move(x.o, up); x.t += up; x.b += up; } }
+        changedPages.add(cur); changedPages.add(nxt);
+        cur = nxt;
+        curBottom = lowest(left); // null: the page emptied, so the next page's lines go to its top
+        curGap = spacingAfter(left);
+      }
+      for (const i of changedPages) P.FPDFPage_GenerateContent(getPage(i).page);
+      // a last page left with nothing but its header/footer is removed
+      let removed = 0;
+      for (let i = n - 1; i > g.page && i === P.FPDF_GetPageCount(doc) - 1; i--) {
+        if (vis(rest(i)).length) break;
+        const p = pages.get(i);
+        if (p) { if (p.text) P.FPDFText_ClosePage(p.text); if (form) P.FORM_OnBeforeClosePage(p.page, form); P.FPDF_ClosePage(p.page); pages.delete(i); }
+        P.FPDFPage_Delete(doc, i); removed++;
+      }
+      const out = save();
+      close();
+      await open(out);
+      modified.clear(); selected = null; pagesChanged = true;
+      await reload(out);
+      onChange?.();
+      toast(removed === 1 ? t("editGapClosedPage") : removed ? t("editGapClosedPages", { n: removed }) : t("editGapClosed"), 4000);
+    } finally {
+      if (src) P.FPDF_CloseDocument(src);
+      free(srcPtr);
+    }
     redrawAll();
   }
 
@@ -358,6 +518,18 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     layer.replaceChildren();
     layer.classList.toggle("adding", mode === "addText");
     if (modified.has(i)) renderPreview(i, pv, layer);
+    if (lastGap && lastGap.page === i) {
+      const r = screenRect(pv, [lastGap.l, lastGap.b, lastGap.r, lastGap.t]);
+      const gb = document.createElement("button");
+      gb.className = "egap";
+      gb.innerHTML = `${icon("arrow-up", 15)}<span></span>`;
+      gb.querySelector("span").textContent = t("editCloseGap");
+      gb.title = t("editCloseGapHint");
+      Object.assign(gb.style, { left: Math.max(8, r.left + r.width / 2) + "px", top: Math.max(8, r.top + r.height / 2) + "px" });
+      gb.addEventListener("pointerdown", (e) => e.stopPropagation());
+      gb.onclick = (e) => { e.stopPropagation(); closeGap(); };
+      layer.append(gb);
+    }
     const del = document.createElement("button");
     del.className = "epage-del";
     del.innerHTML = `${icon("trash-2", 15)}<span></span>`;
@@ -610,7 +782,11 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const it = selectedItem();
     if (!it) return;
     const i = selected.page;
+    const prevGap = lastGap;
     snapshot();
+    const [l, b, r, tp] = it.bounds;
+    // several deletions in a row on one page make one gap
+    lastGap = prevGap && prevGap.page === i ? { page: i, l: Math.min(prevGap.l, l), b: Math.min(prevGap.b, b), r: Math.max(prevGap.r, r), t: Math.max(prevGap.t, tp) } : { page: i, l, b, r, t: tp };
     removeObject(getPage(i).page, it.obj);
     selected = null;
     changed(i);
@@ -637,7 +813,10 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     if (!active || e.target.closest?.("input, select, .inline-edit, textarea")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.stopPropagation(); doUndo(); return; }
-    if (e.key === "Delete" || e.key === "Backspace") { if (selected) { e.preventDefault(); e.stopPropagation(); deleteSelected(); } return; }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (selected) { e.preventDefault(); e.stopPropagation(); deleteSelected(); if (e.shiftKey) closeGap(); }
+      return;
+    }
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (mode !== "select") setMode("select"); else if (selected) select(null, null); return; }
     if (e.key === "Enter" && selected) { e.preventDefault(); e.stopPropagation(); editText(selected.page, selected.k); return; }
     const step = e.shiftKey ? 10 : 1;
@@ -650,7 +829,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   /* ---------------------------------------------------------- session */
   async function enter(bytes, pw = "") {
     password = pw || "";
-    originalBytes = bytes.slice(); pagesChanged = false;
+    originalBytes = bytes.slice(); pagesChanged = false; lastGap = null;
     await open(bytes);
     active = true; selected = null; mode = "select"; undo.length = 0; modified.clear();
     document.body.classList.add("editing");
