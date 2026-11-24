@@ -504,3 +504,4 @@ html[data-theme="dark"] .epage-del { color: #ff8a80; }
 html[data-theme="dark"] .epage-del:hover { background: color-mix(in srgb, #d93025 20%, var(--surface)); }
 .egap { position: absolute; z-index: 4; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border: 0; border-radius: 999px; background: var(--brand); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .22); white-space: nowrap; animation: fl-appear .15s ease; }
 .egap:hover { filter: brightness(1.08); }
+.emarquee { position: absolute; z-index: 5; border: 1px solid var(--brand); background: color-mix(in srgb, var(--brand) 12%, transparent); border-radius: 2px; pointer-events: none; }

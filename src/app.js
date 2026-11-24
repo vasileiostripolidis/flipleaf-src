@@ -14,7 +14,7 @@ const { EventBus, PDFViewer, PDFLinkService, ScrollMode, SpreadMode, LinkTarget 
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.16.0";
+const VERSION = "1.16.1";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -1556,11 +1556,19 @@ if (platform.os === "mac" && platform.isDesktop) document.body.classList.add("ma
 /* ================================================================== keyboard */
 
 addEventListener("keydown", (e) => {
-  const mod = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
+  const mod = e.ctrlKey || e.metaKey;
+  // letters by key position, so shortcuts also work with the Greek keyboard layout
+  const key = mod && /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
   const typing = e.target.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true']");
   if ($("dlg").open) return;
 
   if (mod && key === "o") { e.preventDefault(); openPicker(); return; }
+  // PDF.js reads the letter itself, so with the Greek layout Ctrl+Z/Y would do nothing
+  if (mod && !typing && !editor.active && doc.pdf && /^[^a-z]$/i.test(e.key) && (key === "z" || key === "y")) {
+    e.preventDefault(); e.stopPropagation();
+    if (key === "y" || e.shiftKey) uiManager?.redo(); else uiManager?.undo();
+    return;
+  }
   if (editor.active) { if (mod && key === "s") { e.preventDefault(); editor.exit(true).then(() => save({ as: e.shiftKey })); } return; }
   if (!doc.pdf) return;
   if (mod && key === "s") { e.preventDefault(); save({ as: e.shiftKey }); return; }

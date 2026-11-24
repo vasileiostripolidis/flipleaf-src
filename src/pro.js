@@ -354,7 +354,7 @@ export function installPro(app) {
     const key = (e) => {
       if (e.key === "Escape") { e.stopPropagation(); close(); }
       if ((e.key === "Delete" || e.key === "Backspace") && selected.size) { e.preventDefault(); e.stopPropagation(); act("del"); }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") { e.preventDefault(); e.stopPropagation(); selected = new Set(entries); render(); }
+      if ((e.ctrlKey || e.metaKey) && (e.code === "KeyA" || e.key.toLowerCase() === "a")) { e.preventDefault(); e.stopPropagation(); selected = new Set(entries); render(); }
     };
     addEventListener("keydown", key, true);
     const sel = () => entries.filter((e) => selected.has(e));
