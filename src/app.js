@@ -14,7 +14,7 @@ const { EventBus, PDFViewer, PDFLinkService, ScrollMode, SpreadMode, LinkTarget 
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.17.4";
+const VERSION = "1.17.5";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {

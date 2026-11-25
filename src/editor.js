@@ -915,7 +915,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     if (modified.has(i)) renderPreview(i, pv, layer);
     // "close the gap" offers, beside the page so they never cover the text
     const offers = [];
-    if (lastGap && lastGap.page === i) {
+    // the offer only shows when closing would actually move something
+    if (lastGap && lastGap.page === i && lastGap.can === undefined) {
+      try {
+        const n = P.FPDF_GetPageCount(doc), lo = Math.max(0, i - 4), hi = Math.min(n - 1, i + 4);
+        lastGap.can = planGap(layoutOf(lo, hi).pages, { ...lastGap, page: i - lo }).ok;
+      } catch (e) { console.warn(e); lastGap.can = true; }
+    }
+    if (lastGap && lastGap.page === i && lastGap.can) {
       if (lastGap.boxes) {
         const bx = lastGap.boxes;
         offers.push({ gap: lastGap, top: Math.max(...bx.map((q) => q.t)), bottom: Math.min(...bx.map((q) => q.b)) });

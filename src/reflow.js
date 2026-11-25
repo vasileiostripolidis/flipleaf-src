@@ -219,7 +219,7 @@ export function planGap(pages, gap) {
   const n = pages.length;
   const fail = { ok: false, moves: new Map(), drop: [], removePages: [] };
   if (!gap || gap.page < 0 || gap.page >= n || (!gap.boxes?.length && typeof gap.at !== "number")) return fail;
-  const { body, tops, bottom, isHeading, spacing, bound } = analyze(pages, gap.boxes ? gap.page : -1, gap.boxes || []);
+  const { body, tops, bottom, isHeading, spacing, bound, rowH, paraSp } = analyze(pages);
 
   const moves = new Map(), drop = [];
   const shiftRow = (r, page, dy) => {
@@ -232,46 +232,57 @@ export function planGap(pages, gap) {
     }
   };
 
-  // 1. the page itself
+  // 1. the page itself. The empty space is found from what is left on the page: the lowest thing above
+  // the deleted part (or the pointed-at height) and the highest thing below it. Everything below moves up
+  // until the two have their usual distance. (Text in one column of several: only that column moves.)
   const own = body[gap.page];
-  if (gap.boxes) {
-    // runs of rows that were deleted completely close up
-    const gone = (r) => r.items.every((o) => o.deleted || o.blank) && r.items.some((o) => o.deleted);
-    let closed = false;
-    for (let j = 0; j < own.length; j++) {
-      if (!gone(own[j])) continue;
-      let e = j;
-      while (e + 1 < own.length && gone(own[e + 1])) e++;
-      const first = own[j], last = own[e], prev = own[j - 1], next = own[e + 1];
-      for (let x = j; x <= e; x++) for (const o of own[x].items) if (o.blank && !o.deleted) drop.push(o.id);
-      closed = true;
-      if (next) {
-        const above = prev ? prev.b - first.t : null, below = last.b - next.t;
-        const target = prev ? prev.b - Math.max(above, below) : first.t;
-        const dy = target - next.t;
-        if (dy > 0.01) for (let x = e + 1; x < own.length; x++) shiftRow(own[x], gap.page, dy);
-      }
-      own.splice(j, e - j + 1);
-      j--;
-    }
-    if (!closed) return fail;
+  // text from the next page only comes up if this page was full (a page that ended early, like the end of
+  // a chapter, stays that way) — or when the empty space pointed at is the bottom of the page
+  const lastB = own.length ? own[own.length - 1].b : null;
+  const lowest = gap.boxes ? Math.min(lastB ?? Infinity, ...gap.boxes.map((q) => q.b)) : lastB;
+  const wasFull = lowest !== null && lowest - bottom < rowH * 2.5 + paraSp;
+  const atBottom = !gap.boxes && (lastB === null || gap.at < lastB);
+  const box = gap.boxes
+    ? { l: Math.min(...gap.boxes.map((q) => q.l)), b: Math.min(...gap.boxes.map((q) => q.b)), r: Math.max(...gap.boxes.map((q) => q.r)), t: Math.max(...gap.boxes.map((q) => q.t)) }
+    : { l: -Infinity, r: Infinity, b: gap.at, t: gap.at };
+  const mid = (box.b + box.t) / 2;
+  const textL = Math.min(...own.map((r) => r.l), box.l), textR = Math.max(...own.map((r) => r.r), box.r);
+  const full = !gap.boxes || box.r - box.l > 0.5 * (textR - textL);
+  const centre = (x) => (x.t + x.b) / 2;
+  let prevB = null, nextT = null, prevRow = null, nextRow = null, lower = [];
+  if (full) {
+    const up = own.filter((r) => centre(r) > mid), down = own.filter((r) => centre(r) <= mid);
+    prevRow = up[up.length - 1] || null; nextRow = down[0] || null;
+    prevB = prevRow?.b ?? null; nextT = nextRow?.t ?? null;
+    lower = down;
   } else {
-    // empty space: the rows around it get their usual spacing
-    let j = own.findIndex((r) => r.t <= gap.at);
-    if (j === -1) j = own.length; // below the last row: only the next page can fill it
-    const prev = own[j - 1], next = own[j];
-    if (next) {
-      // (or the spacing the user asked for)
-      const want = typeof gap.space === "number" ? Math.max(0, gap.space) : prev ? spacing(prev, next) : 0;
-      const target = prev ? prev.b - want : tops[gap.page] ?? next.t;
-      const dy = target - next.t;
-      if (dy > 0.5) for (let x = j; x < own.length; x++) shiftRow(own[x], gap.page, dy);
+    const items = own.flatMap((r) => r.items.map((o) => ({ o, r }))).filter(({ o }) => !o.deleted && o.r > box.l - 2 && o.l < box.r + 2);
+    const up = items.filter(({ o }) => centre(o) > mid), down = items.filter(({ o }) => centre(o) <= mid);
+    for (const { o, r } of up) if (prevB === null || o.b < prevB) { prevB = o.b; prevRow = r; }
+    for (const { o, r } of down) if (nextT === null || o.t > nextT) { nextT = o.t; nextRow = r; }
+    lower = down;
+  }
+  if (nextRow) {
+    let want;
+    if (typeof gap.space === "number") want = Math.max(0, gap.space);
+    else if (gap.boxes) {
+      // the spacing there was next to what was deleted (above it or below it) is kept
+      const around = [prevRow ? prevB - box.t : -1, box.b - nextT].filter((d) => d >= 0);
+      want = around.length ? Math.max(...around) : prevRow ? spacing(prevRow, nextRow) : 0;
+      if (prevRow) want = Math.min(want, Math.max(spacing(prevRow, nextRow) * 2, 4));
+    } else want = prevRow ? spacing(prevRow, nextRow) : 0;
+    const target = prevRow ? prevB - want : gap.boxes ? box.t : tops[gap.page] ?? nextT;
+    const dy = target - nextT;
+    if (dy > 0.3) {
+      if (full) for (const r of lower) shiftRow(r, gap.page, dy);
+      else for (const { o } of lower) { const m = moves.get(o.id) || { page: gap.page, dy: 0 }; m.dy += dy; moves.set(o.id, m); o.t += dy; o.b += dy; }
     }
   }
+  if (!full) return moves.size ? { ok: true, moves, drop, removePages: [] } : fail;
 
   // 2. whole rows from the next pages move up, page after page
   let cur = gap.page;
-  for (let nxt = cur + 1; nxt < n; nxt++) {
+  for (let nxt = cur + 1; (wasFull || atBottom) && nxt < n; nxt++) {
     const src = body[nxt], dst = body[cur];
     if (!src.length) break;
     const last = dst[dst.length - 1];
@@ -305,7 +316,7 @@ export function planGap(pages, gap) {
   // pages at the end that are left with nothing but their header/footer
   const removePages = [];
   for (let i = n - 1; i > gap.page && !body[i].length; i--) removePages.push(i);
-  if (!moves.size && !drop.length && !gap.boxes) return fail;
+  if (!moves.size && !drop.length) return fail;
   return { ok: true, moves, drop, removePages };
 }
 
