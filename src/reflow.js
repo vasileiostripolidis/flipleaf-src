@@ -142,8 +142,9 @@ function analyze(pages, phantomPage = -1, phantomBoxes = []) {
   const leftEdge = Math.min(...body.flat().map((r) => r.l), rightEdge);
   const tops = body.map((rs) => (rs.length ? rs[0].t : null));
   const real = (r) => r.items.some((o) => !o.deleted);
-  const lows = body.map((rs) => rs.filter(real)).map((rs) => (rs.length ? rs[rs.length - 1].b : null)).slice(0, -1).filter((v) => v !== null);
-  const fallbackBottom = Math.min(...body.flat().filter(real).map((r) => r.b), Infinity);
+  // (lines of text only: frames and pictures on cover pages and the like do not set the margin)
+  const lows = body.map((rs) => rs.filter((r) => real(r) && hasText(r))).map((rs) => (rs.length ? rs[rs.length - 1].b : null)).slice(0, -1).filter((v) => v !== null);
+  const fallbackBottom = Math.min(...body.flat().filter((r) => real(r) && hasText(r)).map((r) => r.b), Infinity);
   let bottom = lows.length ? Math.min(...lows) : fallbackBottom;
   // never down into a footer
   for (let i = 0; i < n; i++) for (const r of furniture[i]) if (r.t < pages[i].height / 2) bottom = Math.max(bottom, r.t + paraSp);
