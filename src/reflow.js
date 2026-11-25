@@ -270,6 +270,11 @@ export function planGap(pages, gap) {
       const around = [prevRow ? prevB - box.t : -1, box.b - nextT].filter((d) => d >= 0);
       want = around.length ? Math.max(...around) : prevRow ? spacing(prevRow, nextRow) : 0;
       if (prevRow) want = Math.min(want, Math.max(spacing(prevRow, nextRow) * 2, 4));
+    } else if (gap.band && prevRow) {
+      // the user marked this empty space: what was marked goes (even if the spacing was the usual one)
+      const free = prevB - nextT, cut = Math.max(0, Math.min(prevB, gap.top) - Math.max(nextT, gap.bottom));
+      want = Math.max(0.5, free - Math.max(cut, Math.min(free, 2)));
+      if (want > spacing(prevRow, nextRow)) want = Math.min(want, spacing(prevRow, nextRow));
     } else want = prevRow ? spacing(prevRow, nextRow) : 0;
     const target = prevRow ? prevB - want : gap.boxes ? box.t : tops[gap.page] ?? nextT;
     const dy = target - nextT;

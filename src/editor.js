@@ -549,6 +549,31 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     }
   }
 
+  /** Moves objects to another page (dragged there), by (dx, dy) PDF points. The text stays real text. */
+  function moveToPage(i, items, j, dx, dy) {
+    if (!items.length) return;
+    snapshot();
+    const from = getPage(i).page, to = getPage(j).page, first = P.FPDFPage_CountObjects(to);
+    let n = 0;
+    for (const it of items) {
+      if (!P.FPDFPage_RemoveObject(from, it.obj)) continue;
+      P.FPDFPageObj_Transform(it.obj, 1, 0, 0, 1, dx, dy);
+      P.FPDFPageObj_TransformClipPath(it.obj, 1, 0, 0, 1, dx, dy);
+      P.FPDFPage_InsertObject(to, it.obj);
+      n++;
+    }
+    // what left the page leaves a gap that can be closed
+    const boxes = items.filter((it) => it.type !== FPDF_PAGEOBJ_PATH).map((it) => ({ l: it.bounds[0], b: it.bounds[1], r: it.bounds[2], t: it.bounds[3] }));
+    selected = null;
+    changed(i);
+    if (boxes.length) { lastGap = { page: i, boxes }; decorate(i); }
+    changed(j);
+    const ks = [];
+    for (let k = first; k < first + n; k++) ks.push(k);
+    selectMany(j, ks.filter((k) => objects(j).some((o) => o.k === k)));
+    toast(t("editMoved", { n, page: j + 1 }));
+  }
+
   /** The cursor: where Ctrl+V pastes. Shown as a blinking line while there is something to paste. */
   let caret = null; // { page, at: [x, y] }
   function setCaret(i, at) {
@@ -823,7 +848,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
         // dragged over empty space: offer to close it
         const [, ya] = pv.viewport.convertToPdfPoint(0, a.top), [, yb] = pv.viewport.convertToPdfPoint(0, a.top + a.height);
         selected = null;
-        lastGap = { page: i, at: (ya + yb) / 2, top: Math.max(ya, yb), bottom: Math.min(ya, yb) };
+        lastGap = { page: i, at: (ya + yb) / 2, top: Math.max(ya, yb), bottom: Math.min(ya, yb), band: true };
         decorate(i); updateToolbar();
         return;
       }
@@ -1050,6 +1075,13 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       const targets = group ? [...layer.querySelectorAll(".eobj.sel")] : [target];
       const resizing = !!e.target.closest(".handle");
       const start = { x: e.clientX, y: e.clientY }, w0 = target.offsetWidth, h0 = target.offsetHeight;
+      const lr = layer.getBoundingClientRect(), grab = pv.viewport.convertToPdfPoint(e.clientX - lr.left, e.clientY - lr.top);
+      // the page under the pointer (another page: the selection moves there)
+      const pageAt = (ev) => {
+        const el = document.elementsFromPoint(ev.clientX, ev.clientY).map((x) => x.closest?.(".page")).find(Boolean);
+        const j = el ? +el.dataset.pageNumber - 1 : i;
+        return Number.isFinite(j) && j >= 0 ? j : i;
+      };
       let moved = false;
       layer.setPointerCapture(e.pointerId);
       const move = (ev) => {
@@ -1059,15 +1091,28 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
         if (resizing) {
           const s = Math.max(0.05, Math.max((w0 + dx) / w0, (h0 + dy) / h0));
           target.style.width = w0 * s + "px"; target.style.height = h0 * s + "px";
-        } else for (const el of targets) el.style.transform = `translate(${dx}px, ${dy}px)`;
+        } else {
+          for (const el of targets) el.style.transform = `translate(${dx}px, ${dy}px)`;
+          const j = pageAt(ev);
+          for (const pgEl of document.querySelectorAll(".page.edrop")) if (+pgEl.dataset.pageNumber - 1 !== j || j === i) pgEl.classList.remove("edrop");
+          if (j !== i) pageView(j)?.div.classList.add("edrop");
+        }
       };
       const up = (ev) => {
         layer.removeEventListener("pointermove", move);
         layer.removeEventListener("pointerup", up);
         layer.removeEventListener("pointercancel", up);
+        for (const pgEl of document.querySelectorAll(".page.edrop")) pgEl.classList.remove("edrop");
         if (!moved) return;
         const dx = ev.clientX - start.x, dy = ev.clientY - start.y;
         const vp = pv.viewport;
+        const j = resizing ? i : pageAt(ev);
+        if (j !== i && ev.type !== "pointercancel") {
+          const pj = pageView(j), rj = pj.div.querySelector(":scope > .edit-layer")?.getBoundingClientRect() || pj.div.getBoundingClientRect();
+          const drop = pj.viewport.convertToPdfPoint(ev.clientX - rj.left, ev.clientY - rj.top);
+          moveToPage(i, group ? selectedItems() : [item], j, drop[0] - grab[0], drop[1] - grab[1]);
+          return;
+        }
         if (resizing && !group) {
           const s = Math.max(0.05, Math.max((w0 + dx) / w0, (h0 + dy) / h0));
           const r = screenRect(pv, item.bounds);
