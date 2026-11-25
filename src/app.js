@@ -14,7 +14,7 @@ const { EventBus, PDFViewer, PDFLinkService, ScrollMode, SpreadMode, LinkTarget 
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.17.6";
+const VERSION = "1.17.7";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -264,7 +264,10 @@ eventBus.on("pagesinit", () => {
   viewer.currentScaleValue = saved?.scale || store.get("zoom", "auto");
   if (saved?.rotation) viewer.pagesRotation = saved.rotation;
   if (saved?.page > 1 && saved.page <= doc.pdf.numPages) viewer.currentPageNumber = saved.page;
+  // the same document again after an edit: stay exactly where the reader was
+  if (keepScroll) { const k = keepScroll; keepScroll = null; requestAnimationFrame(() => { viewer.container.scrollTop = k.top; viewer.container.scrollLeft = k.left; }); }
 });
+let keepScroll = null;
 function rememberView() {
   if (!doc.pdf || !doc.key) return;
   const v = viewer.currentScaleValue;
@@ -1478,6 +1481,7 @@ $("btnAllTools").onclick = () => pro.allTools();
 /** Loads new bytes for the open document (after editing), keeping page, zoom and rotation. */
 async function replaceDocumentData(bytes, { dirty = true } = {}) {
   const keep = { page: viewer.currentPageNumber, scale: viewer.currentScaleValue, rotation: viewer.pagesRotation, name: doc.name, path: doc.path };
+  const scroll = { top: viewer.container.scrollTop, left: viewer.container.scrollLeft };
   const task = pdfjsLib.getDocument({ data: bytes, ...LOAD_OPTIONS, password: doc.password });
   const size = bytes.byteLength;
   const pdf = await task.promise;
@@ -1486,6 +1490,7 @@ async function replaceDocumentData(bytes, { dirty = true } = {}) {
   Object.assign(doc, { pdf, size, key: pdf.fingerprints[0] });
   pdf.annotationStorage.onSetModified = () => setDirty(true);
   store.set("view." + doc.key, { page: keep.page, scale: keep.scale, rotation: keep.rotation });
+  keepScroll = scroll;
   viewer.setDocument(pdf);
   linkService.setDocument(pdf, null);
   $("pageCount").textContent = "/ " + pdf.numPages;

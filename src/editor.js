@@ -521,7 +521,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       if (!pieces.length) throw new Error("nothing");
       const identity = Math.abs(m[0] - 1) + Math.abs(m[1]) + Math.abs(m[2]) + Math.abs(m[3] - 1) + Math.abs(m[4]) + Math.abs(m[5]) < 1e-6;
       snapshot();
-      const page = getPage(target).page, first = P.FPDFPage_CountObjects(page);
+      const page = getPage(target).page;
       for (const o of pieces) if (!identity) { P.FPDFPageObj_Transform(o, ...m); P.FPDFPageObj_TransformClipPath(o, ...m); }
       // where it goes: its top-left corner at the pointer; otherwise where it was (a little lower and to the
       // right when pasted again on its own page, so it does not hide the original)
@@ -535,10 +535,9 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
         P.FPDFPage_InsertObject(page, o);
         pasted++;
       }
-      changed(target);
-      const ks = [];
-      for (let k = first; k < first + pasted; k++) ks.push(k);
-      selectMany(target, ks.filter((k) => objects(target).some((o) => o.k === k)));
+      const want = pieces.map((o) => ({ type: P.FPDFPageObj_GetType(o), b: readFloats(4, (p) => P.FPDFPageObj_GetBounds(o, p, p + 4, p + 8, p + 12)) })).filter((w) => w.b);
+      await saveAndReopen([target]);
+      selectByPlace(target, want);
       toast(t("editPasted", { n: pasted, page: target + 1 }));
     } catch (e) {
       console.warn(e);
@@ -549,11 +548,37 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     }
   }
 
+  /**
+   * Objects that came from another page (or another copy of the document) are written out and the document
+   * is opened again, so the pages are rebuilt from their saved content — only then is it certain that they
+   * show and print exactly as they will in the saved file.
+   */
+  async function saveAndReopen(pagesTouched) {
+    for (const p of pagesTouched) P.FPDFPage_GenerateContent(getPage(p).page);
+    const out = save();
+    close();
+    await open(out);
+    modified.clear(); selected = null; pagesChanged = true;
+    await reload(out);
+    gapCache.clear();
+    onChange?.();
+    redrawAll();
+  }
+  /** Selects the objects on page i that are of the given kinds at the given places. */
+  function selectByPlace(i, want) {
+    const list = objects(i), ks = [];
+    for (const w of want) {
+      const o = list.find((x) => x.type === w.type && !ks.includes(x.k) && Math.abs(x.bounds[0] - w.b[0]) + Math.abs(x.bounds[1] - w.b[1]) + Math.abs(x.bounds[2] - w.b[2]) + Math.abs(x.bounds[3] - w.b[3]) < 3);
+      if (o) ks.push(o.k);
+    }
+    if (ks.length) selectMany(i, ks);
+  }
+
   /** Moves objects to another page (dragged there), by (dx, dy) PDF points. The text stays real text. */
-  function moveToPage(i, items, j, dx, dy) {
+  async function moveToPage(i, items, j, dx, dy) {
     if (!items.length) return;
     snapshot();
-    const from = getPage(i).page, to = getPage(j).page, first = P.FPDFPage_CountObjects(to);
+    const from = getPage(i).page, to = getPage(j).page;
     let n = 0;
     for (const it of items) {
       if (!P.FPDFPage_RemoveObject(from, it.obj)) continue;
@@ -564,13 +589,10 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     }
     // what left the page leaves a gap that can be closed
     const boxes = items.filter((it) => it.type !== FPDF_PAGEOBJ_PATH).map((it) => ({ l: it.bounds[0], b: it.bounds[1], r: it.bounds[2], t: it.bounds[3] }));
-    selected = null;
-    changed(i);
+    const want = items.map((it) => ({ type: it.type, b: [it.bounds[0] + dx, it.bounds[1] + dy, it.bounds[2] + dx, it.bounds[3] + dy] }));
+    await saveAndReopen([i, j]);
     if (boxes.length) { lastGap = { page: i, boxes }; decorate(i); }
-    changed(j);
-    const ks = [];
-    for (let k = first; k < first + n; k++) ks.push(k);
-    selectMany(j, ks.filter((k) => objects(j).some((o) => o.k === k)));
+    selectByPlace(j, want);
     toast(t("editMoved", { n, page: j + 1 }));
   }
 
@@ -1077,10 +1099,12 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       const start = { x: e.clientX, y: e.clientY }, w0 = target.offsetWidth, h0 = target.offsetHeight;
       const lr = layer.getBoundingClientRect(), grab = pv.viewport.convertToPdfPoint(e.clientX - lr.left, e.clientY - lr.top);
       // the page under the pointer (another page: the selection moves there)
+      // (the boxes being dragged are under the pointer too: they are skipped; null = not over any page)
       const pageAt = (ev) => {
-        const el = document.elementsFromPoint(ev.clientX, ev.clientY).map((x) => x.closest?.(".page")).find(Boolean);
-        const j = el ? +el.dataset.pageNumber - 1 : i;
-        return Number.isFinite(j) && j >= 0 ? j : i;
+        const el = document.elementsFromPoint(ev.clientX, ev.clientY).filter((x) => !x.closest?.(".eobj")).map((x) => x.closest?.(".page")).find(Boolean);
+        if (!el) return null;
+        const j = +el.dataset.pageNumber - 1;
+        return Number.isFinite(j) && j >= 0 ? j : null;
       };
       let moved = false;
       layer.setPointerCapture(e.pointerId);
@@ -1095,7 +1119,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
           for (const el of targets) el.style.transform = `translate(${dx}px, ${dy}px)`;
           const j = pageAt(ev);
           for (const pgEl of document.querySelectorAll(".page.edrop")) if (+pgEl.dataset.pageNumber - 1 !== j || j === i) pgEl.classList.remove("edrop");
-          if (j !== i) pageView(j)?.div.classList.add("edrop");
+          if (j !== null && j !== i) pageView(j)?.div.classList.add("edrop");
         }
       };
       const up = (ev) => {
@@ -1107,7 +1131,13 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
         const dx = ev.clientX - start.x, dy = ev.clientY - start.y;
         const vp = pv.viewport;
         const j = resizing ? i : pageAt(ev);
-        if (j !== i && ev.type !== "pointercancel") {
+        if (ev.type === "pointercancel" || j === null) {
+          // let go outside the pages: nothing moves
+          decorate(i);
+          if (j === null && ev.type !== "pointercancel") toast(t("editDropOnPage"));
+          return;
+        }
+        if (j !== i) {
           const pj = pageView(j), rj = pj.div.querySelector(":scope > .edit-layer")?.getBoundingClientRect() || pj.div.getBoundingClientRect();
           const drop = pj.viewport.convertToPdfPoint(ev.clientX - rj.left, ev.clientY - rj.top);
           moveToPage(i, group ? selectedItems() : [item], j, drop[0] - grab[0], drop[1] - grab[1]);
