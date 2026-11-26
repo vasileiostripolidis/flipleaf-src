@@ -14,7 +14,7 @@ const { EventBus, PDFViewer, PDFLinkService, ScrollMode, SpreadMode, LinkTarget 
   await import("./vendor/pdfjs/web/pdf_viewer.mjs");
 const { AnnotationEditorType: ED, AnnotationEditorParamsType: EP, AnnotationMode, PDFDateString } = pdfjsLib;
 
-const VERSION = "1.17.8";
+const VERSION = "1.17.9";
 const BASE = new URL("./vendor/pdfjs/", import.meta.url).href;
 pdfjsLib.GlobalWorkerOptions.workerSrc = BASE + "pdf.worker.min.mjs";
 const LOAD_OPTIONS = {
@@ -265,9 +265,37 @@ eventBus.on("pagesinit", () => {
   if (saved?.rotation) viewer.pagesRotation = saved.rotation;
   if (saved?.page > 1 && saved.page <= doc.pdf.numPages) viewer.currentPageNumber = saved.page;
   // the same document again after an edit: stay exactly where the reader was
-  if (keepScroll) { const k = keepScroll; keepScroll = null; requestAnimationFrame(() => { viewer.container.scrollTop = k.top; viewer.container.scrollLeft = k.left; }); }
+  if (keepScroll) holdPlace(keepScroll);
+  keepScroll = null;
 });
 let keepScroll = null;
+/** Where the reader is: the page at the top of the view and how far into it (so it survives re-layout). */
+function placeNow() {
+  const c = viewer.container, top = c.scrollTop;
+  let page = 0;
+  for (let i = 0; i < viewer.pagesCount; i++) { const d = viewer.getPageView(i)?.div; if (d && d.offsetTop <= top + 1) page = i; else if (d) break; }
+  const d = viewer.getPageView(page)?.div;
+  return { page, frac: d ? (top - d.offsetTop) / Math.max(1, d.offsetHeight) : 0, left: c.scrollLeft };
+}
+/** Puts the reader back there, again as the pages finish laying out, until they scroll themselves. */
+function holdPlace(place) {
+  const c = viewer.container;
+  let mine = true;
+  const stop = () => { mine = false; };
+  for (const ev of ["wheel", "pointerdown", "keydown", "touchstart"]) c.addEventListener(ev, stop, { once: true, passive: true });
+  const put = () => {
+    if (!mine) return;
+    const d = viewer.getPageView(Math.min(place.page, viewer.pagesCount - 1))?.div;
+    if (!d) return;
+    c.scrollTop = d.offsetTop + place.frac * d.offsetHeight;
+    c.scrollLeft = place.left;
+  };
+  put();
+  requestAnimationFrame(put);
+  eventBus.on("pagesloaded", put, { once: true });
+  for (const ms of [80, 200, 450, 900]) setTimeout(put, ms);
+  setTimeout(stop, 1200);
+}
 function rememberView() {
   if (!doc.pdf || !doc.key) return;
   const v = viewer.currentScaleValue;
@@ -1481,7 +1509,7 @@ $("btnAllTools").onclick = () => pro.allTools();
 /** Loads new bytes for the open document (after editing), keeping page, zoom and rotation. */
 async function replaceDocumentData(bytes, { dirty = true } = {}) {
   const keep = { page: viewer.currentPageNumber, scale: viewer.currentScaleValue, rotation: viewer.pagesRotation, name: doc.name, path: doc.path };
-  const scroll = { top: viewer.container.scrollTop, left: viewer.container.scrollLeft };
+  const scroll = placeNow();
   const task = pdfjsLib.getDocument({ data: bytes, ...LOAD_OPTIONS, password: doc.password });
   const size = bytes.byteLength;
   const pdf = await task.promise;

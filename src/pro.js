@@ -329,7 +329,7 @@ export function installPro(app) {
           if (ev.shiftKey && lastClicked != null) { const [a, b] = [lastClicked, i].sort((x, y) => x - y); for (let k = a; k <= b; k++) selected.add(entries[k]); }
           else if (ev.ctrlKey || ev.metaKey) { selected.has(e) ? selected.delete(e) : selected.add(e); }
           else { selected = new Set([e]); }
-          lastClicked = i; render();
+          lastClicked = i; markSel();
         };
         card.ondragstart = (ev) => { ev.dataTransfer.setData("text/plain", i); card.classList.add("dragging"); };
         card.ondragend = () => card.classList.remove("dragging");
@@ -354,6 +354,51 @@ export function installPro(app) {
       view.querySelector("[data-sel]").textContent = selected.size ? t("orgSelected", { n: selected.size }) : "";
     }
     render();
+    /** Shows the selection on the cards that are there (no rebuilding, so nothing flickers). */
+    function markSel() {
+      for (const card of grid.children) card.classList.toggle("sel", selected.has(entries[+card.dataset.i]));
+      view.querySelector("[data-sel]").textContent = selected.size ? t("orgSelected", { n: selected.size }) : "";
+    }
+    // dragging over the empty space draws a rectangle that selects the pages it touches (Ctrl/Shift: adds)
+    grid.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0 || ev.target.closest(".ocard")) return;
+      ev.preventDefault();
+      const g = grid.getBoundingClientRect();
+      const at = (e2) => [e2.clientX - g.left + grid.scrollLeft, e2.clientY - g.top + grid.scrollTop];
+      const [x0, y0] = at(ev), base = ev.ctrlKey || ev.metaKey || ev.shiftKey ? new Set(selected) : new Set();
+      const band = document.createElement("div");
+      band.className = "org-band";
+      let last = ev, moved = false;
+      const update = () => {
+        const [x1, y1] = at(last);
+        const l = Math.min(x0, x1), tp = Math.min(y0, y1), w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+        if (!moved && w + h < 5) return;
+        if (!moved) { grid.append(band); moved = true; }
+        Object.assign(band.style, { left: l + "px", top: tp + "px", width: w + "px", height: h + "px" });
+        selected = new Set(base);
+        for (const card of grid.querySelectorAll(".ocard")) {
+          const cl = card.offsetLeft, ct = card.offsetTop, cr = cl + card.offsetWidth, cb = ct + card.offsetHeight;
+          if (cl < l + w && cr > l && ct < tp + h && cb > tp) selected.add(entries[+card.dataset.i]);
+        }
+        markSel();
+      };
+      // near the top or bottom edge the list scrolls by itself
+      const scroller = setInterval(() => {
+        const y = last.clientY;
+        const dy = y < g.top + 40 ? -18 : y > g.bottom - 40 ? 18 : 0;
+        if (dy) { grid.scrollTop += dy; update(); }
+      }, 30);
+      const move = (e2) => { last = e2; update(); };
+      const up = () => {
+        clearInterval(scroller);
+        removeEventListener("pointermove", move, true);
+        removeEventListener("pointerup", up, true);
+        band.remove();
+        if (!moved && !base.size) { selected = new Set(); markSel(); }
+      };
+      addEventListener("pointermove", move, true);
+      addEventListener("pointerup", up, true);
+    });
 
     const close = () => { io.disconnect(); view.remove(); removeEventListener("keydown", key, true); };
     const key = (e) => {

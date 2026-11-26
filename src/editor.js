@@ -453,7 +453,66 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   // The clipboard keeps the document as it was and which objects were picked; pasting copies them out of
   // that version into the page (through a copy of the page as a form, whose pieces are then taken out),
   // so pasted text stays real, editable text — also after Undo, and as often as wanted.
-  let clip = null;      // { bytes, page, want: [{ type, b: bounds }], cut }
+  let clip = null;      // { bytes, page, want: [{ type, b: bounds }], cut, text }
+  let pasteWait = null;
+  function onPaste(e) {
+    if (!active || e.target.closest?.("input, select, .inline-edit, textarea")) return;
+    e.preventDefault(); e.stopPropagation();
+    clearTimeout(pasteWait); pasteWait = null;
+    const txt = (e.clipboardData?.getData("text/plain") || "").replace(/\r/g, "");
+    // what was copied here (the clipboard still holds its text, or nothing): the items themselves
+    const picture = [...(e.clipboardData?.files || [])].find((f) => /^image\//.test(f.type));
+    if (clip && !picture && (!txt.trim() || txt === clip.text || !clip.written)) { paste(); return; }
+    if (picture) {
+      // a picture copied anywhere (a screenshot, an image from a page) goes in at the cursor
+      const point = (caret && (!clip || caret.time > clip.time) ? caret : null) || hoverPoint;
+      const i = point?.page ?? hoverPage ?? viewer.currentPageNumber - 1;
+      addImage(i, picture, point?.page === i ? point.at : null).catch(() => toast(t("editImageFailed")));
+      return;
+    }
+    if (txt.trim()) { pasteText(txt); return; }
+    if (clip) paste();
+  }
+  /** Text from the clipboard (copied anywhere) becomes new text at the cursor, in the bar's font and size. */
+  async function pasteText(txt) {
+    const point = (caret && (!clip || caret.time > clip.time) ? caret : null) || hoverPoint;
+    const i = point?.page ?? hoverPage ?? viewer.currentPageNumber - 1;
+    const { page } = getPage(i);
+    const H = P.FPDF_GetPageHeightF(page), W = P.FPDF_GetPageWidthF(page);
+    const size = +ui.size.value || 12;
+    const style = { serif: ui.family.value === "serif", bold: ui.bold.getAttribute("aria-pressed") === "true", italic: ui.italic.getAttribute("aria-pressed") === "true", size, color: ui.color.value };
+    const [x0, y0] = point?.page === i ? point.at : [W * 0.1, H * 0.9];
+    const lines = txt.replace(/\s+$/, "").split("\n");
+    snapshot();
+    for (let l = 0; l < lines.length; l++) {
+      if (!lines[l].trim()) continue;
+      const obj = await newTextObject(lines[l], style, [1, 0, 0, 1, x0, y0 - size * (0.85 + l * 1.25)]);
+      P.FPDFPage_InsertObject(page, obj);
+    }
+    changed(i);
+    const n = P.FPDFPage_CountObjects(page), k0 = n - lines.filter((x) => x.trim()).length, ks = [];
+    for (let k = k0; k < n; k++) ks.push(k);
+    selectMany(i, ks.filter((k) => objects(i).some((o) => o.k === k)));
+    toast(t("editPastedText", { page: i + 1 }));
+  }
+  /** The text of the selected items in reading order (for other programs' clipboard). */
+  function textOf(items) {
+    const rows = [];
+    for (const it of items.filter((o) => o.type === FPDF_PAGEOBJ_TEXT && o.text).sort((a, b) => b.bounds[3] - a.bounds[3] || a.bounds[0] - b.bounds[0])) {
+      const row = rows.find((r) => Math.abs(r.top - it.bounds[3]) < (it.bounds[3] - it.bounds[1]) * 0.5);
+      if (row) row.items.push(it); else rows.push({ top: it.bounds[3], items: [it] });
+    }
+    // pieces close together (letters drawn one by one) join without a space
+    return rows.map((r) => {
+      const its = r.items.sort((a, b) => a.bounds[0] - b.bounds[0]);
+      let out = "";
+      its.forEach((o, j) => {
+        const prev = its[j - 1], gap = prev ? o.bounds[0] - prev.bounds[2] : 0, h = o.bounds[3] - o.bounds[1];
+        out += (j && gap > h * 0.2 && !/\s$/.test(out) ? " " : "") + o.text.replace(/\s+$/, j === its.length - 1 ? "" : " ").replace(/^\s+/, j ? "" : "");
+      });
+      return out.trim();
+    }).join("\n");
+  }
   let hoverPage = null; // the page the pointer was last over: where Ctrl+V pastes
   let hoverPoint = null; // { page, at: [x, y] } while the pointer is over a page: the pasted block's top-left goes there
   function copySelected(cut) {
@@ -462,7 +521,11 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const page = selected.page;
     const bytes = save();
     // objects are found again by kind and place (their order can change when the page is saved)
-    clip = { bytes, page, want: items.map((o) => ({ type: o.type, b: o.bounds })), cut, time: performance.now() };
+    clip = { bytes, page, want: items.map((o) => ({ type: o.type, b: o.bounds })), cut, time: performance.now(), text: textOf(items) };
+    // the text also goes to the system clipboard, for other programs and for typing into text here
+    // (if that is not allowed, Ctrl+V keeps pasting what was copied here, whatever the clipboard holds)
+    const c = clip;
+    try { navigator.clipboard?.writeText(c.text).then(() => { c.written = true; }, () => {}); } catch {}
     if (cut) {
       snapshot();
       for (const it of items) removeObject(getPage(page).page, it.obj);
@@ -1029,8 +1092,8 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
       ks.has(k) ? ks.delete(k) : ks.add(k);
       selected = ks.size ? { page: i, ks } : null;
     } else selected = { page: i, ks: new Set([k]) };
-    if (prev != null && prev !== i) decorate(prev);
-    if (i != null) decorate(i);
+    if (prev != null && prev !== i) showSelection(prev);
+    if (i != null) showSelection(i);
     updateToolbar();
   }
   function selectMany(i, ks, add = false) {
@@ -1038,9 +1101,27 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const set = new Set(add && selected?.page === i ? selected.ks : []);
     for (const k of ks) set.add(k);
     selected = set.size ? { page: i, ks: set } : null;
-    if (prev != null && prev !== i) decorate(prev);
-    decorate(i);
+    if (prev != null && prev !== i) showSelection(prev);
+    showSelection(i);
     updateToolbar();
+  }
+  /**
+   * Shows what is selected on page i by marking the boxes that are already there — nothing is rebuilt or
+   * redrawn, so selecting (also one by one with Ctrl+click) does not make the page flicker.
+   */
+  function showSelection(i) {
+    const layer = pageView(i)?.div?.querySelector(":scope > .edit-layer");
+    const boxes = layer ? layer.querySelectorAll(":scope > .eobj") : [];
+    if (!boxes.length) { decorate(i); return; }
+    const on = selected?.page === i ? selected.ks : null;
+    for (const box of boxes) {
+      const sel = !!on && on.has(+box.dataset.k);
+      box.classList.toggle("sel", sel);
+      const wantHandle = sel && on.size === 1 && !box.classList.contains("etext");
+      const h = box.querySelector(":scope > .handle");
+      if (wantHandle && !h) { const x = document.createElement("span"); x.className = "handle"; box.append(x); }
+      else if (!wantHandle && h) h.remove();
+    }
   }
   function selectNewest(i, type) {
     const list = objects(i).filter((o) => o.type === type);
@@ -1305,7 +1386,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
   function updateToolbar() {
     const it = selectedItem(), many = selected?.ks.size > 1;
     const isText = it?.type === FPDF_PAGEOBJ_TEXT, isImg = it?.type === FPDF_PAGEOBJ_IMAGE;
-    ui.replace.hidden = !isImg;
+    ui.replace.disabled = !isImg; // (disabled, not hidden: the bar keeps its size, so the page does not jump)
     ui.delete.disabled = ui.cut.disabled = ui.copy.disabled = !selected;
     ui.paste.disabled = !clip;
     ui.undo.disabled = !undo.length;
@@ -1394,7 +1475,14 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     const letter = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
     if (mod && letter === "z") { e.preventDefault(); e.stopPropagation(); doUndo(); return; }
     if (mod && (letter === "c" || letter === "x") && selected) { e.preventDefault(); e.stopPropagation(); copySelected(letter === "x"); return; }
-    if (mod && letter === "v" && clip) { e.preventDefault(); e.stopPropagation(); paste(); return; }
+    if (mod && letter === "v") {
+      // the browser follows with a "paste" event carrying the clipboard (text copied anywhere, even in
+      // another program); if it does not come, what was copied here is pasted
+      e.stopPropagation();
+      clearTimeout(pasteWait);
+      pasteWait = setTimeout(() => { pasteWait = null; if (clip) paste(); }, 150);
+      return;
+    }
     if (mod && letter === "a") {
       e.preventDefault(); e.stopPropagation();
       const i = selected?.page ?? viewer.currentPageNumber - 1;
@@ -1424,6 +1512,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     document.getElementById("editBar").hidden = false;
     eventBus.on("pagerendered", onRendered);
     addEventListener("keydown", onKey, true);
+    addEventListener("paste", onPaste, true);
     // load the fonts' CSS faces now so the inline editor looks right
     document.fonts?.load?.('16px "Flipleaf Sans"');
     redrawAll();
@@ -1438,6 +1527,7 @@ export function createEditor({ viewer, eventBus, t, toast, icon, onApply, onCanc
     active = false;
     eventBus.off("pagerendered", onRendered);
     removeEventListener("keydown", onKey, true);
+    removeEventListener("paste", onPaste, true);
     for (const l of document.querySelectorAll(".edit-layer")) l.remove();
     document.body.classList.remove("editing");
     document.getElementById("editBar").hidden = true;
